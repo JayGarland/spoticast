@@ -465,7 +465,7 @@ class ResonovaPlayer {
     // ── SDK readiness check (Phase 3.3) ─────────────────────────────────
     if (!this.spotifyPlayer) {
       this._logPlaybackEvent('spotify-error', { reason: 'no-player' });
-      this._playNext();
+      this._markSpotifyStalled('Spotify player is not ready.');
       return;
     }
 
@@ -479,7 +479,7 @@ class ResonovaPlayer {
       });
       if (!ready) {
         this._logPlaybackEvent('spotify-error', { reason: 'no-device' });
-        this._playNext();
+        this._markSpotifyStalled('Spotify device is not ready.');
         return;
       }
     }
@@ -571,7 +571,7 @@ class ResonovaPlayer {
         this._logPlaybackEvent('spotify-error', { reason: 'play-api-failed' });
       }
       console.error('Spotify play failed:', err);
-      this._playNext();
+      this._markSpotifyStalled('Spotify playback did not start.');
     }
   }
 
@@ -985,14 +985,26 @@ class ResonovaPlayer {
       });
     } else if (this.currentItem?.type === 'spotify' && this.spotifyPlayer) {
       this._logPlaybackEvent('visibility-recovery', { type: 'spotify' });
-      this.spotifyPlayer.resume().catch(() => {
-        // If resume fails, skip to next item
-        this._playNext();
+      this.spotifyPlayer.resume().then(() => {
+        this._clearStallFlag();
+      }).catch(() => {
+        this._markSpotifyStalled('Spotify playback did not resume.');
       });
     }
 
     // Clear stall after attempt — don't keep retrying automatically
     this._clearStallFlag();
+  }
+
+  _markSpotifyStalled(message) {
+    this._playbackStalled = true;
+    this._lastProgressTime = Date.now();
+    this._setMediaSessionState('paused');
+    document.getElementById('next-up').textContent =
+      `${message} Use the system play control, return to Spotify, or press Skip to continue.`;
+    if (typeof window.__resonovaShowResume === 'function') {
+      window.__resonovaShowResume(true);
+    }
   }
 
   // ──────────────────────────────────────────────

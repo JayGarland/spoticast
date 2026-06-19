@@ -35,6 +35,19 @@ the core continuous background transition requirement.
 
 This should not be treated as resolved.
 
+Additional regression observed by owner:
+
+```text
+After returning to the page, Resonova advanced to the next commentary segment
+instead of playing the Spotify music segment that should have come between.
+```
+
+Strategy-layer correction:
+
+- Spotify startup/resume failures should not silently call `_playNext()`.
+- The Spotify segment should remain the current segment and surface a stalled/retry state.
+- The owner can then retry/resume or explicitly press Skip. The app should not silently delete the music segment from the episode flow.
+
 Likely implication:
 
 ```text
