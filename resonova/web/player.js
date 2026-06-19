@@ -55,10 +55,13 @@ class ResonovaPlayer {
 
     // ── Spotify track transition (Phase 3) ────────────────────────────────
     this._spotifyTrackTimeout = null;
+    this._spotifyStartTimeout = null;
     this._spotifyTrackDuration = null;
     this._spotifyLastStateTime = 0;
     this._spotifyLastPosition = 0;
     this._spotifyLastDuration = 0;
+    this._spotifyCurrentUri = null;
+    this._spotifyStartedForCurrentItem = false;
   }
 
   // ──────────────────────────────────────────────
@@ -487,6 +490,8 @@ class ResonovaPlayer {
     this._setSegmentType('spotify');
     this._logPlaybackEvent('spotify-start', { uri: item.uri });
     this._lastProgressTime = Date.now();
+    this._spotifyCurrentUri = item.uri;
+    this._spotifyStartedForCurrentItem = false;
 
     document.getElementById('waveform').classList.add('spotify-mode');
     document.getElementById('waveform').classList.remove('paused');
@@ -549,6 +554,16 @@ class ResonovaPlayer {
         }
       );
 
+      if (this._spotifyStartTimeout) {
+        clearTimeout(this._spotifyStartTimeout);
+      }
+      this._spotifyStartTimeout = setTimeout(() => {
+        if (this.currentItem?.type === 'spotify' && !this._spotifyStartedForCurrentItem) {
+          this._logPlaybackEvent('spotify-start-timeout', { uri: item.uri });
+          this._markSpotifyStalled('Spotify playback did not confirm start.');
+        }
+      }, 12000);
+
       // ── Fallback timer (Phase 3.1) ────────────────────────────────────
       const duration = this._spotifyTrackDuration || 240000;
       if (this._spotifyTrackTimeout) {
@@ -581,12 +596,21 @@ class ResonovaPlayer {
 
     const { paused, position, track_window } = state;
     const previousPosition = this._spotifyLastPosition;
+    const currentTrackUri = track_window?.current_track?.uri;
+    const isCurrentTrack = !this._spotifyCurrentUri || currentTrackUri === this._spotifyCurrentUri;
 
     // Track state for near-end detection (Phase 3.2)
     this._spotifyLastStateTime = Date.now();
     this._spotifyLastPosition = position;
     this._spotifyLastDuration = state.duration;
-    if (!paused && position !== previousPosition) {
+    if (isCurrentTrack && (!paused || position > 1000)) {
+      this._spotifyStartedForCurrentItem = true;
+      if (this._spotifyStartTimeout) {
+        clearTimeout(this._spotifyStartTimeout);
+        this._spotifyStartTimeout = null;
+      }
+    }
+    if (isCurrentTrack && !paused && position !== previousPosition) {
       this._lastProgressTime = Date.now();
     }
 
@@ -594,12 +618,12 @@ class ResonovaPlayer {
     let isEnded = false;
 
     // Condition 1: paused, at start, and there's history (original behavior)
-    if (paused && position === 0 && track_window.previous_tracks.length > 0) {
+    if (this._spotifyStartedForCurrentItem && paused && position === 0 && track_window.previous_tracks.length > 0) {
       isEnded = true;
     }
 
     // Condition 2: paused, at start, no current track loaded (SDK lost the track)
-    if (paused && position === 0 && !track_window.current_track) {
+    if (this._spotifyStartedForCurrentItem && paused && position === 0 && !track_window.current_track) {
       isEnded = true;
     }
 
@@ -612,6 +636,10 @@ class ResonovaPlayer {
       if (this._spotifyTrackTimeout) {
         clearTimeout(this._spotifyTrackTimeout);
         this._spotifyTrackTimeout = null;
+      }
+      if (this._spotifyStartTimeout) {
+        clearTimeout(this._spotifyStartTimeout);
+        this._spotifyStartTimeout = null;
       }
       this._logPlaybackEvent('spotify-ended');
       this._lastProgressTime = Date.now();
@@ -889,7 +917,7 @@ class ResonovaPlayer {
       }
 
       // ── Near-end Spotify track detection (Phase 3.2) ──────────────────
-      if (this.currentItem?.type === 'spotify' && !this._trackEndFired) {
+      if (this.currentItem?.type === 'spotify' && !this._trackEndFired && this._spotifyStartedForCurrentItem) {
         const sinceLastState = Date.now() - this._spotifyLastStateTime;
         if (sinceLastState > 8000 && this._spotifyLastPosition > 0 && this._spotifyLastDuration > 0) {
           const remaining = this._spotifyLastDuration - this._spotifyLastPosition;
@@ -1128,6 +1156,10 @@ class ResonovaPlayer {
         if (this._spotifyTrackTimeout) {
           clearTimeout(this._spotifyTrackTimeout);
           this._spotifyTrackTimeout = null;
+        }
+        if (this._spotifyStartTimeout) {
+          clearTimeout(this._spotifyStartTimeout);
+          this._spotifyStartTimeout = null;
         }
         this.spotifyPlayer?.pause();
         this._playNext();

@@ -61,6 +61,20 @@ Second strategy-layer correction:
 - On `visibilitychange`/focus recovery, if the current HTML audio element is already ended or near its duration, Resonova now advances to the next queue item instead of calling `audio.play()` on an already-finished segment.
 - The health monitor also checks for an ended commentary segment when JavaScript wakes up after background throttling.
 
+Third owner validation finding:
+
+```text
+Even while the page is active on mobile, pressing Skip can jump from one AI
+commentary segment to the next AI commentary segment instead of playing the
+Spotify music segment between them. Desktop playback does not show this.
+```
+
+Third strategy-layer correction:
+
+- The Spotify end detector now requires proof that the intended Spotify track actually started before accepting any `paused + position 0` state as an ended track.
+- This guards against stale/mobile Spotify SDK state that can falsely look like "track ended" before the track ever played.
+- Added a `spotify-start-timeout` path: if the Web Playback SDK/API accepts the play request but never confirms playback start, Resonova marks the Spotify segment as stalled instead of skipping it.
+
 Likely implication:
 
 ```text
