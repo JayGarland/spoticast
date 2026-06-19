@@ -19,7 +19,7 @@ This note records current trust weights for Resonova manager agents after the mo
 | Codex chef layer | 0.78 | Gatekeeper with probation note | Scope control, diff review, commit discipline, strategy docs, manager query writing | Must inspect manager response, handoff, git status, and git diff before accepting |
 | gem-orchestrator / gem-team | 0.82 | Award for diagnosis | Research, baseline validation, document-first analysis, correcting false assumptions | Normal gate; prefer for diagnosis before implementation |
 | OCP workspace lead / OCP organization | 0.76 | Stable planner | Strategy, roadmap, audits, organizational briefs | Normal gate; use when output should become repo docs |
-| RUG manager | 0.64 | Implementation probation | Bounded patches with explicit file limits and acceptance tests | Strict gate; require no broad formatting, no speculative recovery loops, no coding outside task scope |
+| RUG manager | 0.70 | Preferred implementation manager, strict gate | Bounded patches with explicit file limits and acceptance tests | Strict gate; require no broad formatting, no speculative recovery loops, no coding outside task scope |
 
 ## Incident Review
 
@@ -36,11 +36,12 @@ This note records current trust weights for Resonova manager agents after the mo
 - One manager incorrectly claimed Spotify Web Playback SDK mobile support was impossible.
 - RUG produced useful work, but repeatedly introduced excess patch surface such as large CSS formatting churn.
 - Chef layer allowed too much implementation momentum before forcing clean diagnosis.
+- Owner clarification: not every style diff is a manager mistake; owner may intentionally tune UI values. Chef layer must identify owner edits before reverting or penalizing.
 
 ## Updated Routing Rules
 
 1. For unclear playback/mobile failures, assign diagnosis first to `gem-orchestrator`.
-2. Assign implementation to `RUG` only after the failing layer is named and acceptance evidence is specified.
+2. Assign implementation to `RUG` after the failing layer is named and acceptance evidence is specified; owner currently prefers RUG for implementation tests.
 3. If RUG touches unrelated files or creates formatting churn, reject the patch and salvage only the minimal logic.
 4. Use `OCP` for strategy docs, roadmap, and company operating model work.
 5. Chef layer must produce the exact manager query and include file limits, no-go rules, and validation evidence.
@@ -73,4 +74,3 @@ Next manager should not add retries blindly. The next brief must determine wheth
 - Spotify Connect device handoff after page resume,
 - Media Session action handling,
 - or an architectural limitation of browser-based interleaving.
-
