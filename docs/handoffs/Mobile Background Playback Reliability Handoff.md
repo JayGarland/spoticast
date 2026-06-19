@@ -48,6 +48,19 @@ Strategy-layer correction:
 - The Spotify segment should remain the current segment and surface a stalled/retry state.
 - The owner can then retry/resume or explicitly press Skip. The app should not silently delete the music segment from the episode flow.
 
+Second owner validation failure:
+
+```text
+After preventing Spotify skip, playback can simply stop after the previous
+commentary segment finishes instead of transitioning to the next segment.
+```
+
+Second strategy-layer correction:
+
+- Added an explicit "audio already ended" recovery check.
+- On `visibilitychange`/focus recovery, if the current HTML audio element is already ended or near its duration, Resonova now advances to the next queue item instead of calling `audio.play()` on an already-finished segment.
+- The health monitor also checks for an ended commentary segment when JavaScript wakes up after background throttling.
+
 Likely implication:
 
 ```text

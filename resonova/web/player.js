@@ -873,6 +873,21 @@ class ResonovaPlayer {
     const interval = this._isMobile ? 3000 : 5000;
     const threshold = this._isMobile ? 10000 : 15000;
     this._healthCheckInterval = setInterval(() => {
+      // If a commentary segment reached the end while the browser was
+      // backgrounded and `ended` did not dispatch, advance when JS wakes up.
+      if (this.currentItem?.type === 'audio' && this.audioEl) {
+        if (this._isAudioAtEnd()) {
+          this._logPlaybackEvent('audio-ended-healthcheck');
+          if (this._audioCleanup) {
+            this._audioCleanup();
+            this._audioCleanup = null;
+          }
+          this._lastProgressTime = Date.now();
+          this._playNext();
+          return;
+        }
+      }
+
       // ── Near-end Spotify track detection (Phase 3.2) ──────────────────
       if (this.currentItem?.type === 'spotify' && !this._trackEndFired) {
         const sinceLastState = Date.now() - this._spotifyLastStateTime;
@@ -969,6 +984,16 @@ class ResonovaPlayer {
 
     if (this.currentItem?.type === 'audio' && this.audioEl) {
       this._logPlaybackEvent('visibility-recovery', { type: 'audio' });
+      if (this._isAudioAtEnd()) {
+        this._logPlaybackEvent('audio-ended-recovery');
+        if (this._audioCleanup) {
+          this._audioCleanup();
+          this._audioCleanup = null;
+        }
+        this._clearStallFlag();
+        this._playNext();
+        return;
+      }
       this.audioEl.play().then(() => {
         this._clearStallFlag();
         if (typeof window.__resonovaShowResume === 'function') {
@@ -994,6 +1019,14 @@ class ResonovaPlayer {
 
     // Clear stall after attempt — don't keep retrying automatically
     this._clearStallFlag();
+  }
+
+  _isAudioAtEnd() {
+    if (!this.audioEl) return false;
+    const { currentTime, duration, ended } = this.audioEl;
+    if (ended) return true;
+    if (!duration || !isFinite(duration)) return false;
+    return currentTime >= duration - 0.25;
   }
 
   _markSpotifyStalled(message) {
