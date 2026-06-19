@@ -28,6 +28,7 @@ class ResonovaPlayer {
     // True once the server has finished synthesizing all tracks
     this._generationComplete = true;
     this._diagEl = null; // diagnostic overlay, lazily created
+    this._diagVisible = localStorage.getItem('resonova:diag') === '1';
     this._lifecycle = {
       sdkLoaded: false,
       playerConstructed: false,
@@ -45,6 +46,22 @@ class ResonovaPlayer {
       protocol: location.protocol,
       userAgent: navigator.userAgent,
     };
+  }
+
+  _createDiagToggle() {
+    const btn = document.createElement('button');
+    btn.id = 'diag-toggle';
+    btn.className = 'diag-toggle';
+    btn.textContent = 'Diag';
+    btn.title = 'Toggle Spotify diagnostic panel';
+    btn.addEventListener('click', () => {
+      this._diagVisible = !this._diagVisible;
+      localStorage.setItem('resonova:diag', this._diagVisible ? '1' : '0');
+      btn.classList.toggle('on', this._diagVisible);
+      this._renderDiagnostics(null);
+    });
+    if (this._diagVisible) btn.classList.add('on');
+    return btn;
   }
 
   // ──────────────────────────────────────────────
@@ -464,6 +481,11 @@ class ResonovaPlayer {
   }
 
   _renderDiagnostics(state) {
+    if (!this._diagVisible) {
+      if (this._diagEl) this._diagEl.remove();
+      this._diagEl = null;
+      return;
+    }
     // Lazy-create the diagnostic DOM element
     if (!this._diagEl) {
       this._diagEl = document.createElement('div');
@@ -665,7 +687,12 @@ class ResonovaPlayer {
   _showState(name) {
     document.querySelectorAll('.state').forEach(el => el.classList.remove('active'));
     const el = document.getElementById(`state-${name}`);
-    if (el) el.classList.add('active');
+    if (el) {
+      el.classList.add('active');
+      if (name === 'playing' && !document.getElementById('diag-toggle')) {
+        document.getElementById('on-air-badge')?.appendChild(this._createDiagToggle());
+      }
+    }
   }
 
   _showError(msg) {

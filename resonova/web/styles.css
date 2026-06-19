@@ -1124,3 +1124,32 @@ body::after {
   border-color: var(--accent-mid);
   color: var(--accent);
 }
+
+/* Diagnostic toggle button */
+.diag-toggle {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.35rem;
+  padding: 0.18rem 0.4rem;
+  background: transparent;
+  border: 1px solid var(--panel-border);
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 0.52rem;
+  color: var(--cream-faint);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s;
+  opacity: 0.75;
+}
+
+.diag-toggle:hover {
+  opacity: 0.9;
+}
+
+.diag-toggle.on {
+  color: var(--accent);
+  border-color: var(--accent-mid);
+  opacity: 0.9;
+}
