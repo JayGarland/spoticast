@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     gemini_tts_model: str = "gemini-2.5-pro-preview-tts"
 
     max_tracks: int = 30
+    host: str = "127.0.0.1"
     port: int = 8765
 
     @property

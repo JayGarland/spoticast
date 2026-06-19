@@ -131,6 +131,7 @@ Git is the version-control and recovery boundary:
 - use git status/diff to inspect changes
 - keep unrelated work separate where possible
 - do not treat generated handoffs as accepted until reviewed
+- after an update is validated and accepted, create a git commit checkpoint
 - use commits as explicit checkpoints when the owner authorizes them
 - never use destructive git operations unless the owner explicitly asks
 

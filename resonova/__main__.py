@@ -8,12 +8,12 @@ from resonova.config import settings
 
 
 def main():
-    host = "127.0.0.1"
+    host = settings.host
     port = settings.port
 
     def open_browser():
         time.sleep(1.0)
-        webbrowser.open(f"http://{host}:{port}")
+        webbrowser.open(f"http://127.0.0.1:{port}")
 
     t = threading.Thread(target=open_browser, daemon=True)
     t.start()
