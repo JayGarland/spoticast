@@ -385,6 +385,15 @@ class ResonovaPlayer {
     if (!state) return;
     if (this.currentItem?.type !== 'spotify') return;
 
+    console.log('[Resonova] Spotify state:', JSON.stringify({
+      paused: state?.paused,
+      position: state?.position,
+      duration: state?.duration,
+      track: state?.track_window?.current_track?.name,
+      prevCount: state?.track_window?.previous_tracks?.length,
+      deviceId: this.deviceId,
+    }));
+
     const { paused, position, track_window } = state;
 
     // Track ended: paused, at the very start, and there's a track in history
@@ -716,6 +725,7 @@ class ResonovaPlayer {
 const _CROSSFADE_MS = 1800;
 
 const resonova = new ResonovaPlayer();
+window.resonova = resonova;
 
 document.addEventListener('DOMContentLoaded', () => {
   resonova.init();

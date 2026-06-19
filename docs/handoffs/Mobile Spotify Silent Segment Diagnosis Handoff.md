@@ -279,3 +279,67 @@ console.log('[Resonova] Spotify state:', JSON.stringify({
 4. **If H3 is confirmed (wrong device):** Add a check for the active device before playing, or ensure `_transferPlayback` sets this device as active.
 
 5. **Should the owner also test with a SECOND Spotify track in the same episode?** If H1 is correct (first track has empty previous_tracks), the second Spotify track would have `previous_tracks.length > 0` and might transition correctly — or might exhibit the same autoplay block.
+
+## 7. Desktop Evidence (Chrome MCP — 2026-06-19)
+
+### Diagnostic Changes Implemented
+
+Two diagnostic-only lines were added to `player.js` (already committed):
+
+1. **Line 719:** `window.resonova = resonova;` — exposes the player instance for mobile console access
+2. **Lines ~386-393:** `console.log('[Resonova] Spotify state:', ...)` in `_handleSpotifyStateChange` — logs every SDK state change
+
+Syntax validated: `node --check` passed, zero lint errors.
+
+### Desktop Baseline (Chrome 127.0.0.1:8765)
+
+Tested by:
+- Navigating to `http://127.0.0.1:8765/` via Chrome MCP
+- Clicking "Slowcore Echoes" episode → playback started
+- Skipping to reach Spotify track "Reason Why" by TRAM (segment 3/14)
+
+**Console output from `_handleSpotifyStateChange`:**
+
+| Time | paused | position (ms) | duration (ms) | track | prevCount | deviceId |
+|------|--------|---------------|---------------|-------|-----------|----------|
+| T+0 | `false` | 0 | 347573 | Reason Why | 0 | `07af00ff...` |
+| T+0 | `false` | 0 | 347597 | Reason Why | 0 | `07af00ff...` |
+| T+1s | `false` | **1025** | 347597 | Reason Why | 0 | `07af00ff...` |
+
+**Network evidence:**
+- Spotify audio CDN (`audio-ak.spotifycdn.com`): 8× `206 Partial Content` responses — audio data streaming
+- Spotify API: `PUT /v1/me/player/play` succeeded, `POST /v1/melody/v1/msg/batch` (SDK telemetry active)
+
+**`getCurrentState()` via `window.resonova`:**
+```json
+{
+  "deviceId": "07af00ff53d03e38a94987e696e1547ad05b562d",
+  "spotifyPlayerExists": true,
+  "spotifyState": {
+    "paused": false,
+    "position": 30245,
+    "duration": 347597,
+    "currentTrack": "Reason Why",
+    "previousTracksCount": 0,
+    "loading": false
+  }
+}
+```
+
+**Desktop verdict:** ✅ Everything works. SDK `ready` fires, `deviceId` valid, `paused: false`, position advancing, audio streaming from Spotify CDN.
+
+### Mobile Owner Test (Next Step)
+
+The owner should now repeat the same test on mobile over Tailscale. The `console.log` output will appear in the mobile browser console. The key expected patterns:
+
+| Mobile console shows | Diagnosis |
+|---------------------|-----------|
+| `paused:true, position:0, prevCount:0, deviceId:"xxx"` | **H1 confirmed** — autoplay blocked, no recovery code for first track |
+| `paused:true, position:0, prevCount:0, deviceId:null` | **H2 confirmed** — SDK `ready` never fired |
+| `paused:false, position:>0, deviceId:"xxx"` | SDK works — issue is something else (audio routing?) |
+| No `[Resonova]` messages at all | `player_state_changed` never fires — SDK disconnected |
+
+**If mobile console access is unavailable**, the owner can:
+1. Use `window.resonova.deviceId` in the console to check device status
+2. Use `window.resonova.spotifyPlayer.getCurrentState().then(s => console.log(JSON.stringify({paused:s?.paused,position:s?.position,track:s?.track_window?.current_track?.name,prevCount:s?.track_window?.previous_tracks?.length})))` for full state
+3. Or request an on-page diagnostic display be added
