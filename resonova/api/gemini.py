@@ -321,7 +321,7 @@ def build_prompt(context: dict[str, Any]) -> str:
 (Use these for trivia, connections, fan relationship context)
 {''.join(artist_section_lines)}
 
-═══ PLAYLIST TRACKS (in order) ═══
+═══ PLAYLIST TRACKS (episode order) ═══
 (Each track's commentary is a DJ intro that plays BEFORE its track. Track 1 has no previous track to reference. Tracks 2+ briefly acknowledge what just played, then introduce the upcoming track.)
 {track_section}
 
@@ -364,10 +364,10 @@ async def generate_episode_name(context: dict[str, Any]) -> str:
 
 async def generate_script(context: dict[str, Any]) -> dict:
     """Call Gemini and return the parsed script JSON."""
-    # Cache key: sorted track URIs + Last.fm username (identifies playlist + listener)
-    track_uris = sorted(t["uri"] for t in context["tracks"])
+    # Cache key includes episode order because commentary references previous/upcoming tracks.
+    track_uris = [t["uri"] for t in context["tracks"]]
     username = context.get("lastfm_user", {}).get("username", "")
-    script_key = cache.cache_key("script_v3", username, *track_uris)
+    script_key = cache.cache_key("script_v4_ordered", username, *track_uris)
     cached = cache.get(_CACHE_PREFIX, script_key)
     if cached is not None:
         return cached

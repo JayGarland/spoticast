@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import random
 try:
     from uuid import uuid7  # type: ignore[attr-defined]  # Python 3.14+
 except ImportError:
@@ -72,6 +73,19 @@ class Job:
 
 
 _jobs: dict[str, Job] = {}
+
+
+def _select_playlist_tracks_for_episode(tracks: list[Any]) -> list[Any]:
+    """Return a varied episode order from a playlist without mutating fetched data."""
+    max_tracks = settings.max_tracks
+    original_selection = list(tracks[:max_tracks])
+    episode_tracks = list(tracks)
+    for _ in range(5):
+        random.shuffle(episode_tracks)
+        selection = episode_tracks[:max_tracks]
+        if len(selection) < 2 or selection != original_selection:
+            return selection
+    return episode_tracks[:max_tracks]
 
 
 # ---------------------------------------------------------------------------
@@ -269,7 +283,7 @@ async def _run_generation(job: Job):
                 loop.run_in_executor(None, spotify_api.fetch_playlist, job.playlist_uri),
                 loop.run_in_executor(None, spotify_api.fetch_playlist_name, job.playlist_uri),
             )
-            tracks = tracks[:settings.max_tracks]
+            tracks = _select_playlist_tracks_for_episode(tracks)
 
         if not tracks:
             raise ValueError("No tracks found. Check the playlist link or track list.")
