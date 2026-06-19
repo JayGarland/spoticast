@@ -343,3 +343,34 @@ The owner should now repeat the same test on mobile over Tailscale. The `console
 1. Use `window.resonova.deviceId` in the console to check device status
 2. Use `window.resonova.spotifyPlayer.getCurrentState().then(s => console.log(JSON.stringify({paused:s?.paused,position:s?.position,track:s?.track_window?.current_track?.name,prevCount:s?.track_window?.previous_tracks?.length})))` for full state
 3. Or request an on-page diagnostic display be added
+
+## 8. Owner Desktop/Mobile Follow-up — 2026-06-19
+
+Owner desktop console evidence:
+
+```text
+[Resonova] Spotify state: {"paused":false,"position":0,"duration":347573,"track":"Reason Why","prevCount":0,"deviceId":"0818c4e0..."}
+[Resonova] Spotify state: {"paused":false,"position":0,"duration":347597,"track":"Reason Why","prevCount":0,"deviceId":"0818c4e0..."}
+[Resonova] Spotify state: {"paused":false,"position":1011,"duration":347597,"track":"Reason Why","prevCount":0,"deviceId":"0818c4e0..."}
+```
+
+Desktop interpretation:
+
+- Spotify DRM/PlayReady robustness warnings appear in the console, but desktop playback works.
+- The important diagnostic signal is `paused:false` and `position` advancing from `0` to `1011`.
+- `prevCount:0` does not prevent desktop playback, so `previous_tracks` being empty is not itself the reason mobile is silent.
+- Desktop confirms the queue, token, SDK load, and baseline playback path are healthy.
+
+Owner mobile result:
+
+```text
+Mobile still fails.
+Owner cannot easily access the mobile browser console.
+```
+
+Updated next step:
+
+```text
+Add a tiny on-page/mobile-visible diagnostic display for Spotify state.
+Do not add playback recovery, timers, fallback modes, or product behavior changes yet.
+```
