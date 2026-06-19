@@ -21,8 +21,8 @@ import google.auth
 from google import genai
 from google.genai import types
 
-from spoticast import cache
-from spoticast.config import settings
+from resonova import cache
+from resonova.config import settings
 
 logger = logging.getLogger(__name__)
 

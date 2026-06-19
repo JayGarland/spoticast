@@ -1,4 +1,4 @@
-"""Episode persistence — each generated spoticast is stored as a JSON manifest."""
+"""Episode persistence for generated Resonova cast sessions."""
 
 from __future__ import annotations
 

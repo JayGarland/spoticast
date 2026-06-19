@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "spoticast"
+name = "resonova"
 version = "0.1.0"
-description = "AI-powered podcast commentary for Spotify playlists"
+description = "Personal AI radio companion that grows with your listening history"
 requires-python = ">=3.13"
 dependencies = [
     "fastapi>=0.115.0",
@@ -24,7 +24,7 @@ dependencies = [
 ]
 
 [project.scripts]
-spoticast = "spoticast.__main__:main"
+resonova = "resonova.__main__:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["spoticast"]
+packages = ["resonova"]

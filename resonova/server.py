@@ -20,16 +20,16 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
-from spoticast.config import settings
-from spoticast import episodes as episodes_store
-from spoticast.api import audio as audio_api
-from spoticast.api import gemini as claude_api
-from spoticast.api import lastfm as lastfm_api
-from spoticast.api import research as research_api
-from spoticast.api import spotify as spotify_api
-from spoticast.api import tts as tts_api
+from resonova.config import settings
+from resonova import episodes as episodes_store
+from resonova.api import audio as audio_api
+from resonova.api import gemini as gemini_api
+from resonova.api import lastfm as lastfm_api
+from resonova.api import research as research_api
+from resonova.api import spotify as spotify_api
+from resonova.api import tts as tts_api
 
-app = FastAPI(title="Spoticast")
+app = FastAPI(title="Resonova")
 
 # Serve generated audio files
 _GENERATED_DIR = Path("generated")
@@ -300,8 +300,8 @@ async def _run_generation(job: Job):
         context["playlist_name"] = job.playlist_name
 
         script, episode_name = await asyncio.gather(
-            claude_api.generate_script(context),
-            claude_api.generate_episode_name(context),
+            gemini_api.generate_script(context),
+            gemini_api.generate_episode_name(context),
         )
 
         job.push("progress", {"step": "tts", "message": "Synthesizing intro audio..."})

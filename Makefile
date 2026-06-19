@@ -7,14 +7,14 @@ install: ## Install dependencies with uv
 	uv sync
 
 run: ## Run the app
-	uv run spoticast
+	uv run resonova
 
 dev: ## Run the app with auto-reload
-	uv run uvicorn spoticast.server:app --host 127.0.0.1 --port $${PORT:-8765} --reload
+	uv run uvicorn resonova.server:app --host 127.0.0.1 --port $${PORT:-8765} --reload
 
 clean-cache: ## Clear generated audio, scripts, and research cache (forces regeneration)
 	rm -rf generated/ .cache/ .research_cache/
 	@echo "Cleared generated audio, script cache, and research cache."
 
 clean: ## Remove caches and build artifacts
-	rm -rf .venv __pycache__ spoticast/__pycache__ spoticast/**/__pycache__ dist build *.egg-info
+	rm -rf .venv __pycache__ resonova/__pycache__ resonova/**/__pycache__ dist build *.egg-info

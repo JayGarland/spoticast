@@ -5,7 +5,7 @@ from __future__ import annotations
 from google import genai
 from google.genai import types
 
-from spoticast.config import settings
+from resonova.config import settings
 
 # Speaker name and voice for each host role.
 # Charon (Informative) suits the analytical HOST_A; Aoede (Breezy) fits the intuitive HOST_B.

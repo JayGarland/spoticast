@@ -10,7 +10,7 @@ from pathlib import Path
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 
-from spoticast.config import settings
+from resonova.config import settings
 
 _OAUTH_CACHE = ".research_cache/.spotify_oauth"
 
@@ -344,7 +344,7 @@ def build_playlist_context(
     features: dict[str, AudioFeatures],
     user_ctx: UserContext,
 ) -> dict[str, Any]:
-    """Combine all data into a compact context dict for the Claude prompt."""
+    """Combine Spotify data into a compact context dict for script generation."""
     all_top_uris = set(
         user_ctx.top_tracks_short
         + user_ctx.top_tracks_medium

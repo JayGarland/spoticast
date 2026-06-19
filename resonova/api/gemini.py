@@ -8,8 +8,8 @@ from typing import Any
 from google import genai
 from google.genai import types
 
-from spoticast import cache
-from spoticast.config import settings
+from resonova import cache
+from resonova.config import settings
 
 _CACHE_PREFIX = "gemini"
 

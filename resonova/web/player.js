@@ -1,5 +1,5 @@
 /**
- * Spoticast player — interleaves Spotify Web Playback SDK with HTML audio commentary.
+ * Resonova player — interleaves Spotify Web Playback SDK with HTML audio commentary.
  *
  * Queue format: [{type: "audio"|"spotify", url?: string, uri?: string}]
  * Playback proceeds sequentially through the queue; each item triggers the next
@@ -14,14 +14,14 @@ const STEP_MAP = {
   tts:      'step-tts',
 };
 
-class SpoticastPlayer {
+class ResonovaPlayer {
   constructor() {
     this.queue               = [];
     this.totalItems          = 0;
     this.completedItems      = 0;
     this.deviceId            = null;
     this.spotifyPlayer       = null;
-    this.audioEl             = document.getElementById('spoticast-audio');
+    this.audioEl             = document.getElementById('resonova-audio');
     this.currentItem         = null;
     // Prevents double-firing of playNext on track end
     this._trackEndFired      = false;
@@ -110,7 +110,7 @@ class SpoticastPlayer {
     if (!token) return;
 
     this.spotifyPlayer = new window.Spotify.Player({
-      name: 'Spoticast',
+      name: 'Resonova',
       getOAuthToken: async (cb) => {
         const { token: fresh } = await this._apiFetch('/auth/token');
         cb(fresh);
@@ -715,10 +715,10 @@ class SpoticastPlayer {
 // Duration of the volume fade at segment transitions (ms)
 const _CROSSFADE_MS = 1800;
 
-const spoticast = new SpoticastPlayer();
+const resonova = new ResonovaPlayer();
 
 document.addEventListener('DOMContentLoaded', () => {
-  spoticast.init();
+  resonova.init();
 
   // Generate form submission
   document.getElementById('generate-form').addEventListener('submit', async (e) => {
@@ -726,9 +726,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const btn = document.getElementById('generate-btn');
     btn.disabled = true;
     btn.textContent = 'Starting...';
-    await spoticast.generate(document.getElementById('playlist-uri').value);
+    await resonova.generate(document.getElementById('playlist-uri').value);
     btn.disabled = false;
-    btn.textContent = 'Generate Podcast';
+    btn.textContent = 'Generate Cast';
   });
 
   // Auto-resize textarea and allow pasting multi-line track lists
@@ -745,22 +745,22 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('state-connected').addEventListener('click', (e) => {
     const episodeCard = e.target.closest('.episode-card');
     if (episodeCard) {
-      spoticast._playEpisode(episodeCard.dataset.episodeId);
+      resonova._playEpisode(episodeCard.dataset.episodeId);
       return;
     }
     const card = e.target.closest('.playlist-card');
     if (card) {
-      spoticast._handlePlaylistClick(card.dataset.uri);
+      resonova._handlePlaylistClick(card.dataset.uri);
     }
   });
 
   // Skip button
   document.getElementById('skip-btn').addEventListener('click', () => {
-    spoticast.skip();
+    resonova.skip();
   });
 
   // Load more playlists
   document.getElementById('load-more-playlists').addEventListener('click', () => {
-    spoticast._loadPlaylists();
+    resonova._loadPlaylists();
   });
 });

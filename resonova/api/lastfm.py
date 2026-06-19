@@ -18,8 +18,8 @@ from typing import Any
 import pylast
 from dataclasses import asdict
 
-from spoticast import cache
-from spoticast.config import settings
+from resonova import cache
+from resonova.config import settings
 
 _CACHE_PREFIX = "lastfm"
 

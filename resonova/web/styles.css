@@ -507,7 +507,7 @@ body::after {
   letter-spacing: 0.05em;
 }
 
-/* Episode list — past generated spoticasts */
+/* Episode list — past generated cast sessions */
 .episode-list {
   display: flex;
   flex-direction: column;

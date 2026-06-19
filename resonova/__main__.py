@@ -4,7 +4,7 @@ import webbrowser
 
 import uvicorn
 
-from spoticast.config import settings
+from resonova.config import settings
 
 
 def main():
@@ -19,7 +19,7 @@ def main():
     t.start()
 
     uvicorn.run(
-        "spoticast.server:app",
+        "resonova.server:app",
         host=host,
         port=port,
         reload=False,

@@ -1,16 +1,36 @@
-# Spoticast
+# Resonova
 
-Your Spotify playlist, reimagined as a podcast. Two AI hosts deliver DJ intros and per-track commentary, interleaved with the actual music — all in the browser.
+Resonova is a personal AI radio companion that grows with your listening history. The current MVP turns Spotify playlists or pasted track lists into hosted cast sessions: two AI hosts deliver DJ intros and per-track commentary, interleaved with the actual music in the browser.
+
+## Lineage
+
+This repo is renamed from the Spoticast base implementation. Spoticast remains the upstream/base reference for the first working flow:
+
+```
+playlist -> AI script -> TTS host -> playback
+```
+
+The local Git branch `base/spoticast` points at the pre-rename baseline. Resonova builds from that base toward longer-term profile, memory, refresh, feedback, and customization features.
 
 ## How it works
 
 1. Paste a Spotify playlist link
-2. Spoticast fetches the tracks, audio features, artist bios, and (optionally) your Last.fm listening history
+2. Resonova fetches the tracks, audio features, artist bios, and listening context
 3. Gemini generates a podcast script: a ~5-minute intro + per-track commentary with trivia, production stories, and artist connections
 4. Gemini TTS synthesizes two voices in one pass (multi-speaker)
 5. The browser player crossfades between commentary audio and Spotify playback via the Web Playback SDK
 
 Audio is streamed to the player as soon as the intro is synthesized — you don't wait for the whole episode.
+
+## Product direction
+
+The inherited Spoticast flow is one-shot: one playlist becomes one generated cast episode. Resonova keeps that working base, then expands it into a growing personal cast system:
+
+- Long-term taste profile and listening history
+- Refreshable sessions based on recent listening, playlists, and library context
+- Feedback loops so the AI host learns preferred tone, analysis depth, and framing
+- Customizable lenses such as mood, era, trip memory, genre, or host style
+- Future source expansion beyond Spotify
 
 ## Prerequisites
 
@@ -31,7 +51,7 @@ http://127.0.0.1:8765/auth/callback
 
 Copy the **Client ID** and **Client Secret** from the app dashboard.
 
-> The Client Secret is technically optional (Spoticast uses PKCE for the browser OAuth flow) but recommended for server-side token refresh.
+> The Client Secret is technically optional because Resonova uses PKCE for the browser OAuth flow, but it is recommended for server-side token refresh.
 
 ### 2. Gemini access (choose one)
 
@@ -53,7 +73,7 @@ Set `GOOGLE_CLOUD_PROJECT=your-project-id` in `.env`, or let it resolve from ADC
 
 ### 3. Last.fm (optional)
 
-Last.fm enriches the commentary with your play counts, loved tracks, and listening era context. Without it, Spoticast still works — it just won't reference your personal history.
+Last.fm enriches the commentary with your play counts, loved tracks, and listening era context. Without it, Resonova still works — it just won't reference your personal history.
 
 1. Create an API account at [last.fm/api/account/create](https://www.last.fm/api/account/create)
 2. Copy the **API Key** and **Shared Secret** into `.env`
@@ -101,7 +121,7 @@ The browser opens automatically at `http://127.0.0.1:8765`.
 1. Click **Connect Spotify** and complete the OAuth flow
 2. Optionally enter your Last.fm username and click **Connect**
 3. Paste a playlist link, URI, or select one from your library
-4. Click **Generate Podcast** — the intro plays as soon as it's ready (~1–2 min), remaining tracks stream in as they're synthesized
+4. Click **Generate Cast** — the intro plays as soon as it's ready (~1–2 min), remaining tracks stream in as they're synthesized
 
 ## Spotify API limitations (development mode)
 
@@ -111,7 +131,7 @@ Spotify apps start in **Development Mode**, which has a few practical constraint
 
 **Playlist access is restricted to playlists you own.** You can't directly paste a link to someone else's playlist (e.g. Spotify editorial playlists, a friend's playlist) — Spotify will return a 404. Two workarounds:
 
-- **Best option — copy-paste tracks:** Open any playlist in the Spotify desktop app, press `⌘A` (Mac) / `Ctrl+A` (Windows) to select all tracks, then `⌘C` / `Ctrl+C` to copy. Paste directly into the Spoticast input box. This works for any playlist including Discover Weekly, Release Radar, editorial playlists, etc.
+- **Best option — copy-paste tracks:** Open any playlist in the Spotify desktop app, press `⌘A` (Mac) / `Ctrl+A` (Windows) to select all tracks, then `⌘C` / `Ctrl+C` to copy. Paste directly into the Resonova input box. This works for any playlist including Discover Weekly, Release Radar, editorial playlists, etc.
 - **Save a copy:** Use Spotify's *Add to playlist* to copy the tracks into a playlist you own, then paste that playlist's link.
 
 To remove the 25-user cap and playlist restrictions, you can apply for a [Spotify Extended Quota](https://developer.spotify.com/documentation/web-api/concepts/quota-modes) — but for personal use the copy-paste workaround is simpler.
@@ -128,7 +148,7 @@ All settings are read from `.env` (or environment variables):
 | `GOOGLE_CLOUD_PROJECT` | ↑ or ADC | GCP project for Vertex AI |
 | `LASTFM_API_KEY` | No | Enriches commentary with listening history |
 | `LASTFM_API_SECRET` | No | Required alongside `LASTFM_API_KEY` |
-| `GEMINI_MODEL` | No | Defaults to `gemini-2.5-pro` |
+| `GEMINI_MODEL` | No | Defaults to `gemini-3.1-pro-preview` |
 | `MAX_TRACKS` | No | Tracks per episode, default `30` |
 | `PORT` | No | Default `8765` |
 
@@ -144,18 +164,18 @@ make clean        # Remove venv and Python build artifacts
 ## Architecture
 
 ```
-spoticast/
+resonova/
   __main__.py      # Entry point: starts uvicorn + opens browser
   config.py        # Pydantic settings (from .env / env vars)
   cache.py         # Disk-backed JSON cache for scripts and research
   server.py        # FastAPI: routes, background jobs, SSE progress stream
   api/
     spotify.py     # OAuth, playlist fetch, audio features, user context
-    gemini.py      # Script generation (Gemini 2.5 Pro, structured JSON output)
-    tts.py         # Multi-speaker TTS (Gemini 2.5 Flash TTS)
+    gemini.py      # Script generation (Gemini, structured JSON output)
+    tts.py         # Multi-speaker TTS (Gemini TTS)
     audio.py       # pydub: PCM → MP3 assembly
     lastfm.py      # Fan-era classification, artist profiles, track enrichment
-    research.py    # Wikipedia parallel fetch with disk cache
+    research.py    # Gemini + Google Search grounding with disk cache
   web/
     index.html     # Single-page UI
     player.js      # Spotify SDK + HTML Audio interleaved queue + crossfade
