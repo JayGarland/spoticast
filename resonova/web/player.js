@@ -20,7 +20,9 @@ class ResonovaPlayer {
     this.totalItems          = 0;
     this.completedItems      = 0;
     this.deviceId            = null;
+    this._cachedToken        = null;
     this.spotifyPlayer       = null;
+    this._segmentDeadline    = null;
     this.audioEl             = document.getElementById('resonova-audio');
     this.currentItem         = null;
     // Prevents double-firing of playNext on track end
@@ -144,12 +146,20 @@ class ResonovaPlayer {
     this._lifecycle.sdkLoaded = true;
     const { token } = await this._apiFetch('/auth/token');
     if (!token) return;
+    this._cachedToken = token;
 
     this.spotifyPlayer = new window.Spotify.Player({
       name: 'Resonova',
       getOAuthToken: async (cb) => {
-        const { token: fresh } = await this._apiFetch('/auth/token');
-        cb(fresh);
+        try {
+          const { token: fresh } = await this._apiFetch('/auth/token');
+          if (fresh) this._cachedToken = fresh;
+          cb(fresh || this._cachedToken);
+        } catch {
+          // If fetch fails (mobile suspended/backgrounded), use cached token
+          // so cb() is always called and SDK never gets stuck
+          if (this._cachedToken) cb(this._cachedToken);
+        }
       },
       volume: 0.85,
     });
@@ -348,6 +358,11 @@ class ResonovaPlayer {
     const item = this.queue.shift();
     this.currentItem    = item;
     this._trackEndFired = false;
+    // Clear any pending segment deadline (item is changing)
+    if (this._segmentDeadline) {
+      clearTimeout(this._segmentDeadline);
+      this._segmentDeadline = null;
+    }
     this.completedItems++;
     this._updateProgress();
     this._updateSkipButton();
@@ -468,6 +483,22 @@ class ResonovaPlayer {
       deviceId: this.deviceId,
     }));
 
+    // Set a one-shot deadline: if player_state_changed never fires again
+    // (mobile background/lockscreen), force-advance after remaining duration.
+    if (state.duration > 0 && !this._segmentDeadline) {
+      const remainingMs = Math.max(0, state.duration - (state.position || 0));
+      const deadlineMs = Math.max(3000, remainingMs + 3000);
+      const sentinel = this.currentItem;
+      this._segmentDeadline = setTimeout(() => {
+        if (this.currentItem === sentinel && !this._trackEndFired) {
+          console.log('[Resonova] Segment deadline fired; forcing advance');
+          this._trackEndFired = true;
+          this._fadeSpotifyVolume(0.85, 0, _CROSSFADE_MS).then(() => this._playNext());
+        }
+        this._segmentDeadline = null;
+      }, deadlineMs);
+    }
+
     const { paused, position, track_window } = state;
 
     // Track ended: paused, at the very start, and there's a track in history
@@ -562,6 +593,10 @@ class ResonovaPlayer {
   }
 
   _onPlaybackComplete() {
+    if (this._segmentDeadline) {
+      clearTimeout(this._segmentDeadline);
+      this._segmentDeadline = null;
+    }
     document.getElementById('on-air-badge').classList.remove('active');
     document.getElementById('waveform').classList.add('paused');
     this._setNowPlaying('Episode Complete', '');
@@ -843,7 +878,10 @@ class ResonovaPlayer {
   // Ramp Spotify player volume from → to over durationMs, returns a Promise
   async _fadeSpotifyVolume(from, to, durationMs) {
     if (!this.spotifyPlayer) return;
-    const steps = 20;
+    // Cap step count so background-throttled setTimeout
+    // doesn't balloon the fade to 20+ seconds.
+    // Each step is roughly one second at most for short fades.
+    const steps = Math.min(20, Math.max(1, Math.ceil(durationMs / 1000)));
     const stepMs = durationMs / steps;
     for (let i = 0; i <= steps; i++) {
       const v = Math.max(0, Math.min(1, from + (to - from) * (i / steps)));
