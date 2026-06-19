@@ -161,7 +161,7 @@ class ResonovaPlayer {
           if (this._cachedToken) cb(this._cachedToken);
         }
       },
-      volume: 0.85,
+      volume: _SPOTIFY_VOLUME,
     });
     this._lifecycle.playerConstructed = true;
 
@@ -454,7 +454,7 @@ class ResonovaPlayer {
 
     try {
       // Restore full volume whenever we start a Spotify track
-      await this.spotifyPlayer.setVolume(0.85);
+      await this.spotifyPlayer.setVolume(_SPOTIFY_VOLUME);
       await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${this.deviceId}`, {
         method: 'PUT',
         headers: {
@@ -493,7 +493,7 @@ class ResonovaPlayer {
         if (this.currentItem === sentinel && !this._trackEndFired) {
           console.log('[Resonova] Segment deadline fired; forcing advance');
           this._trackEndFired = true;
-          this._fadeSpotifyVolume(0.85, 0, _CROSSFADE_MS).then(() => this._playNext());
+          this._fadeSpotifyVolume(_SPOTIFY_VOLUME, 0, _CROSSFADE_MS).then(() => this._playNext());
         }
         this._segmentDeadline = null;
       }, deadlineMs);
@@ -506,7 +506,7 @@ class ResonovaPlayer {
       if (!this._trackEndFired) {
         this._trackEndFired = true;
         // Fade Spotify out while commentary starts (crossfade)
-        this._fadeSpotifyVolume(0.85, 0, _CROSSFADE_MS).then(() => this._playNext());
+        this._fadeSpotifyVolume(_SPOTIFY_VOLUME, 0, _CROSSFADE_MS).then(() => this._playNext());
       }
     }
   }
@@ -921,6 +921,8 @@ class ResonovaPlayer {
 
 // Duration of the volume fade at segment transitions (ms)
 const _CROSSFADE_MS = 1800;
+// Spotify masters are usually much louder than generated commentary.
+const _SPOTIFY_VOLUME = 0.62;
 
 const resonova = new ResonovaPlayer();
 window.resonova = resonova;
