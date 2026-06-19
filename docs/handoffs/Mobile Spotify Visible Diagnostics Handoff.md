@@ -36,6 +36,7 @@ Strategy-layer correction:
 - The diagnostic panel is now rendered immediately when playback starts, before any Spotify event exists.
 - It shows `waiting for Spotify state` while no SDK state has been received.
 - The panel is now fixed at the bottom of the viewport with larger text and high z-index, so the owner can clearly see it on mobile.
+- Follow-up correction: the panel was raised above the playback controls after owner testing showed it blocked the Skip button.
 
 ## Files Changed
 
@@ -114,7 +115,7 @@ python -m uvicorn resonova.server:app --host 127.0.0.1 --port 8765
 
 ## Design Decisions
 
-- Diagnostic is a fixed bottom overlay with high z-index, so it stays visible even when the normal playing layout is off-screen
+- Diagnostic is a fixed bottom overlay with high z-index, offset above the playback controls so the Skip button remains usable
 - Diagnostic is a child of `#state-playing`, so it auto-hides when state changes away from playing
 - Rendered immediately when playback starts, so it is visible even if the Spotify SDK never emits `player_state_changed`
 - Called **before** the `currentItem.type` guard, so it shows last-known Spotify state even during commentary segments
