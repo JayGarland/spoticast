@@ -81,7 +81,7 @@ async def synthesize_dialogue(lines: list[dict]) -> bytes:
 
     client = _new_client()
     response = await client.aio.models.generate_content(
-        model="gemini-2.5-flash-tts",
+        model=settings.gemini_tts_model,
         contents=prompt,
         config=types.GenerateContentConfig(
             response_modalities=["AUDIO"],

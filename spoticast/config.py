@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     google_cloud_location: str = "global"
     gemini_model: str = "gemini-3.1-pro-preview"
     gemini_research_model: str = "gemini-3.1-flash-lite-preview"
+    gemini_tts_model: str = "gemini-2.5-pro-preview-tts"
 
     max_tracks: int = 30
     port: int = 8765

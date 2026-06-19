@@ -112,7 +112,13 @@ _KEY_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 
 
 def _parse_track(item: dict) -> TrackInfo:
-    track = item.get("track", item)
+    # Spotify API has two response shapes for playlist items:
+    #   Old: {"track": {actual_track_object}}  — "track" is a nested dict
+    #   New: {"track": true, "artists": [...], ...}  — "track" is a bool type flag,
+    #        and the actual track fields are at the top level of `item`.
+    # For /tracks (sp.tracks()), there is no "track" key at all.
+    raw = item.get("track", item)
+    track = raw if isinstance(raw, dict) else item
     artists = ", ".join(a["name"] for a in track["artists"])
     release_date = track["album"].get("release_date", "")
     year = release_date[:4] if release_date else "Unknown"
@@ -140,9 +146,9 @@ def fetch_playlist(playlist_uri: str) -> list[TrackInfo]:
     results = sp.playlist_tracks(playlist_uri, limit=100)
     while results:
         for item in results["items"]:
-            if item and item.get("track") and item["track"].get("uri"):
-                if not item["track"]["uri"].startswith("spotify:local:"):
-                    t = _parse_track(item)
+            if item and item.get("item") and item["item"].get("uri"):
+                if not item["item"]["uri"].startswith("spotify:local:"):
+                    t = _parse_track(item["item"])
                     _track_cache[t.uri] = t
                     tracks.append(t)
         results = sp.next(results) if results.get("next") else None
@@ -273,7 +279,7 @@ def fetch_recent_plays() -> list[dict]:
                 "uri": pl["uri"],
                 "name": pl["name"],
                 "image": images[0]["url"] if images else None,
-                "track_count": pl["tracks"]["total"],
+                "track_count": pl.get("tracks", {}).get("total", 0),
                 "owner": pl["owner"]["display_name"],
             })
         except Exception:
@@ -299,7 +305,7 @@ def fetch_featured_playlists() -> list[dict]:
                     "name": item["name"],
                     "description": item.get("description", ""),
                     "image": images[0]["url"] if images else None,
-                    "track_count": item["tracks"]["total"],
+                    "track_count": item.get("tracks", {}).get("total", 0),
                     "owner": item["owner"]["display_name"],
                 })
         results = sp.next(results) if results.get("next") else None
@@ -322,7 +328,7 @@ def fetch_user_playlists(limit: int = 50, offset: int = 0) -> dict:
             "name": item["name"],
             "description": item.get("description", ""),
             "image": images[0]["url"] if images else None,
-            "track_count": item["tracks"]["total"],
+            "track_count": item.get("tracks", {}).get("total", 0),
             "owner": item["owner"]["display_name"],
         })
     return {

@@ -368,11 +368,22 @@ async def _run_generation(job: Job):
     except Exception as exc:
         job.status = "error"
         job.error = str(exc)
-        # Produce a friendlier message for common Spotify API errors
+
+        # Produce friendlier messages for common Spotify API errors.
+        # Only rewrite messages for actual SpotifyException instances —
+        # string-matching "404" or "401" on arbitrary exceptions (TTS, Gemini,
+        # etc.) would produce misleading results.
+        try:
+            from spotipy import SpotifyException
+        except ImportError:
+            SpotifyException = None  # type: ignore[assignment]
+
         msg = str(exc)
-        if "404" in msg:
-            msg = "Playlist not found. Make sure it's public (or that you own it) and that the URI is correct."
-        elif "401" in msg or "403" in msg:
-            msg = "Spotify auth error. Try disconnecting and reconnecting your Spotify account."
+        if SpotifyException is not None and isinstance(exc, SpotifyException):
+            if exc.http_status == 404:
+                msg = "Playlist not found. Make sure it's public (or that you own it) and that the URI is correct."
+            elif exc.http_status in (401, 403):
+                msg = "Spotify auth error. Try disconnecting and reconnecting your Spotify account."
+
         job.push("error", {"message": msg})
         logger.exception("Generation failed for job %s", job.job_id)
