@@ -27,6 +27,7 @@ class ResonovaPlayer {
     this._trackEndFired      = false;
     // True once the server has finished synthesizing all tracks
     this._generationComplete = true;
+    this._diagEl = null; // diagnostic overlay, lazily created
   }
 
   // ──────────────────────────────────────────────
@@ -258,6 +259,7 @@ class ResonovaPlayer {
     this.completedItems = 0;
     this._showState('playing');
     document.getElementById('on-air-badge').classList.add('active');
+    this._renderDiagnostics(null);
     this._updateSkipButton();
     this._playNext();
   }
@@ -383,6 +385,7 @@ class ResonovaPlayer {
 
   _handleSpotifyStateChange(state) {
     if (!state) return;
+    this._renderDiagnostics(state);
     if (this.currentItem?.type !== 'spotify') return;
 
     console.log('[Resonova] Spotify state:', JSON.stringify({
@@ -403,6 +406,66 @@ class ResonovaPlayer {
         // Fade Spotify out while commentary starts (crossfade)
         this._fadeSpotifyVolume(0.85, 0, _CROSSFADE_MS).then(() => this._playNext());
       }
+    }
+  }
+
+  _renderDiagnostics(state) {
+    // Lazy-create the diagnostic DOM element
+    if (!this._diagEl) {
+      this._diagEl = document.createElement('div');
+      this._diagEl.className = 'spotify-diag';
+      const playing = document.getElementById('state-playing');
+      if (playing) playing.appendChild(this._diagEl);
+    }
+
+    const fmtMs = (ms) => {
+      if (ms == null) return '--:--';
+      const s = Math.floor(ms / 1000);
+      const m = Math.floor(s / 60);
+      const sec = s % 60;
+      return m + ':' + String(sec).padStart(2, '0');
+    };
+
+    const d = {
+      paused:    state ? (state.paused ? 'yes' : 'no') : 'waiting',
+      position:  state ? fmtMs(state.position) : '--:--',
+      duration:  state ? fmtMs(state.duration) : '--:--',
+      track:     (state?.track_window?.current_track?.name || 'waiting for Spotify state').slice(0, 32),
+      deviceId:  this.deviceId ? 'yes' : 'NO',
+      prevCount: state?.track_window?.previous_tracks?.length ?? '-',
+      segType:   this.currentItem?.type || '-',
+      queueRemaining: this.queue.length,
+    };
+
+    // Build rows with warn class for critical fields
+    const row = (label, value, warn) =>
+      `<div class="spotify-diag-row"><span class="spotify-diag-label">${label}</span><span class="spotify-diag-value${warn ? ' warn' : ''}">${value}</span></div>`;
+
+    this._diagEl.innerHTML =
+      row('Paused',   d.paused) +
+      row('Position', d.position) +
+      row('Duration', d.duration) +
+      row('Track',    d.track) +
+      row('Device ID',d.deviceId, d.deviceId === 'NO') +
+      row('Prev',     d.prevCount) +
+      row('Seg type', d.segType) +
+      row('Queue',    d.queueRemaining) +
+      '<button class="spotify-diag-refresh" id="spotify-diag-refresh">Refresh State</button>';
+
+    // Bind refresh button (re-bind every render since innerHTML replaces it)
+    const btn = this._diagEl.querySelector('#spotify-diag-refresh');
+    if (btn) {
+      btn.addEventListener('click', () => this._refreshDiagnostics());
+    }
+  }
+
+  async _refreshDiagnostics() {
+    try {
+      if (!this.spotifyPlayer) return;
+      const state = await this.spotifyPlayer.getCurrentState();
+      if (state) this._renderDiagnostics(state);
+    } catch (e) {
+      console.warn('[Resonova] Refresh diagnostics failed:', e);
     }
   }
 
