@@ -1,12 +1,50 @@
 # Mobile Background Playback Reliability Handoff
 
 **Date:** 2026-06-19
-**Status:** Ready for owner mobile testing
+**Status:** Failed owner mobile validation; needs follow-up architecture/fix pass
 **Parent Objective:** [Mobile Background Playback Reliability Brief](../strategy/mobile-background-playback-reliability-brief.md)
 
 ## Summary
 
 Resonova's core playback engine had 5 root causes that caused silent stalls when transitioning between segments — especially on mobile with screen locked. This fix adds 13 defense-in-depth mechanisms spanning health monitoring, timeupdate fallback, intelligent error handling, visibility recovery, Spotify SDK hardening, Media Session API support, and a "Tap to Resume" overlay. The result: playback reliably advances across segments without requiring tab reactivation, with honest documentation of remaining browser-policy limitations.
+
+## Owner Validation Failure
+
+Owner mobile testing after commit `d4296a3` showed the lock-screen Media Session surface now appears correctly, but playback still does not continue automatically across a segment transition while the phone is locked/backgrounded.
+
+Screenshot evidence:
+
+- Lock screen displays `Resonova Commentary`.
+- Media controls are visible.
+- The next segment appears at `00:00 / 01:22`.
+- Pause button is shown, but playback did not continue through the transition.
+
+Interpretation:
+
+```text
+The Media Session layer is working, but the mobile browser still blocks or suspends
+programmatic playback of the next segment after the current segment ends while locked.
+```
+
+Gate decision:
+
+```text
+The manager fix improved observability/control-surface behavior but did not solve
+the core continuous background transition requirement.
+```
+
+This should not be treated as resolved.
+
+Likely implication:
+
+```text
+For reliable locked-screen mobile playback, Resonova may need to avoid requiring
+JavaScript to start a new media source while the phone is locked.
+```
+
+Candidate next direction:
+
+- Investigate a mobile playback architecture that uses fewer runtime source transitions, such as a preassembled continuous commentary stream for mobile replay, a foreground-only interleaved mode with explicit warning, or a deeper platform-specific approach if Spotify interleaving must work under lock screen.
 
 ## Strategy-Layer Gate Notes
 
