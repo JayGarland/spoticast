@@ -23,8 +23,21 @@ _track_cache: dict[str, TrackInfo] = {}
 _features_cache: dict[str, AudioFeatures] = {}
 
 
-def get_oauth() -> SpotifyOAuth:
+def get_oauth(redirect_uri: str | None = None) -> SpotifyOAuth:
     global _oauth
+    # When an explicit redirect_uri is provided (e.g. from a request's Host
+    # header), create a fresh OAuth instance so the redirect_uri matches the
+    # access URL.  The cached instance is only used for the default URI.
+    if redirect_uri is not None:
+        Path(_OAUTH_CACHE).parent.mkdir(parents=True, exist_ok=True)
+        return SpotifyOAuth(
+            client_id=settings.spotify_client_id,
+            client_secret=settings.spotify_client_secret,
+            redirect_uri=redirect_uri,
+            scope=settings.spotify_scopes,
+            open_browser=False,
+            cache_path=_OAUTH_CACHE,
+        )
     if _oauth is None:
         Path(_OAUTH_CACHE).parent.mkdir(parents=True, exist_ok=True)
         _oauth = SpotifyOAuth(
@@ -50,12 +63,12 @@ def get_client() -> spotipy.Spotify:
     return _client
 
 
-def get_auth_url() -> str:
-    return get_oauth().get_authorize_url()
+def get_auth_url(redirect_uri: str | None = None) -> str:
+    return get_oauth(redirect_uri).get_authorize_url()
 
 
-def handle_callback(code: str) -> dict:
-    oauth = get_oauth()
+def handle_callback(code: str, redirect_uri: str | None = None) -> dict:
+    oauth = get_oauth(redirect_uri)
     token_info = oauth.get_access_token(code, as_dict=True)
     return token_info
 

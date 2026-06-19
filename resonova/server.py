@@ -84,19 +84,32 @@ async def serve_index():
     return HTMLResponse(content=html_path.read_text(), status_code=200)
 
 
+def _resolve_redirect_uri(request: Request) -> str:
+    """Build the redirect_uri from the incoming request's Host header.
+
+    When accessed via Tailscale Serve (host ends with .ts.net), use HTTPS
+    so the OAuth callback works on mobile.  Otherwise fall back to the
+    configured default (usually http://127.0.0.1:8765 for local dev).
+    """
+    host = request.headers.get("host", "")
+    if ".ts.net" in host:
+        return f"https://{host}/auth/callback"
+    return settings.redirect_uri
+
+
 @app.get("/auth/spotify")
-async def auth_spotify():
-    url = spotify_api.get_auth_url()
+async def auth_spotify(request: Request):
+    url = spotify_api.get_auth_url(_resolve_redirect_uri(request))
     return RedirectResponse(url)
 
 
 @app.get("/auth/callback")
-async def auth_callback(code: str | None = None, error: str | None = None):
+async def auth_callback(request: Request, code: str | None = None, error: str | None = None):
     if error or not code:
         return HTMLResponse(
             f"<h1>Auth failed</h1><p>{error}</p>", status_code=400
         )
-    spotify_api.handle_callback(code)
+    spotify_api.handle_callback(code, _resolve_redirect_uri(request))
     return RedirectResponse("/?auth=success")
 
 
