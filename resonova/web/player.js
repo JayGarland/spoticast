@@ -492,6 +492,7 @@ class ResonovaPlayer {
     this._lastProgressTime = Date.now();
     this._spotifyCurrentUri = item.uri;
     this._spotifyStartedForCurrentItem = false;
+    document.getElementById('next-up').textContent = 'Starting Spotify track...';
 
     document.getElementById('waveform').classList.add('spotify-mode');
     document.getElementById('waveform').classList.remove('paused');
@@ -603,7 +604,8 @@ class ResonovaPlayer {
     this._spotifyLastStateTime = Date.now();
     this._spotifyLastPosition = position;
     this._spotifyLastDuration = state.duration;
-    if (isCurrentTrack && (!paused || position > 1000)) {
+    const hasRealProgress = position > 1000 || (position > 0 && position > previousPosition);
+    if (isCurrentTrack && hasRealProgress) {
       this._spotifyStartedForCurrentItem = true;
       if (this._spotifyStartTimeout) {
         clearTimeout(this._spotifyStartTimeout);

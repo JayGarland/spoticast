@@ -75,6 +75,19 @@ Third strategy-layer correction:
 - This guards against stale/mobile Spotify SDK state that can falsely look like "track ended" before the track ever played.
 - Added a `spotify-start-timeout` path: if the Web Playback SDK/API accepts the play request but never confirms playback start, Resonova marks the Spotify segment as stalled instead of skipping it.
 
+Fourth owner validation finding:
+
+```text
+Mobile active-page behavior still appears unchanged: AI commentary advances to
+AI commentary instead of reliably entering the Spotify music segment.
+```
+
+Fourth strategy-layer correction:
+
+- Tightened "Spotify started" again. A mobile SDK state with `paused=false` but `position=0` no longer counts as a started track.
+- The current Spotify item must show actual positive position/progress before any end detector can advance past it.
+- Added visible `Starting Spotify track...` text so the owner can distinguish "entered Spotify and stalled" from "skipped Spotify entirely."
+
 Likely implication:
 
 ```text
