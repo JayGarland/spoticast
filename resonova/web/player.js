@@ -28,6 +28,23 @@ class ResonovaPlayer {
     // True once the server has finished synthesizing all tracks
     this._generationComplete = true;
     this._diagEl = null; // diagnostic overlay, lazily created
+    this._lifecycle = {
+      sdkLoaded: false,
+      playerConstructed: false,
+      connectCalled: false,
+      connectResult: null,
+      ready: false,
+      deviceId: null,
+      notReady: false,
+      initError: null,
+      authError: null,
+      accountError: false,
+      playbackError: null,
+      autoplayFailed: false,
+      isSecureContext: window.isSecureContext,
+      protocol: location.protocol,
+      userAgent: navigator.userAgent,
+    };
   }
 
   // ──────────────────────────────────────────────
@@ -107,6 +124,7 @@ class ResonovaPlayer {
 
   async _initSpotifyPlayer() {
     // Always fetch a fresh token — it may have been refreshed server-side
+    this._lifecycle.sdkLoaded = true;
     const { token } = await this._apiFetch('/auth/token');
     if (!token) return;
 
@@ -118,34 +136,69 @@ class ResonovaPlayer {
       },
       volume: 0.85,
     });
+    this._lifecycle.playerConstructed = true;
 
     this.spotifyPlayer.addListener('ready', ({ device_id }) => {
       this.deviceId = device_id;
+      this._lifecycle.ready = true;
+      this._lifecycle.deviceId = device_id;
+      this._renderDiagnostics(null);
       this._transferPlayback(device_id, token);
     });
 
     this.spotifyPlayer.addListener('not_ready', () => {
       this.deviceId = null;
+      this._lifecycle.notReady = true;
+      this._renderDiagnostics(null);
     });
 
     this.spotifyPlayer.addListener('initialization_error', ({ message }) => {
       console.error('Spotify init error:', message);
+      this._lifecycle.initError = message;
+      this._renderDiagnostics(null);
       document.getElementById('sdk-warning').classList.add('visible');
     });
 
     this.spotifyPlayer.addListener('authentication_error', ({ message }) => {
       console.error('Spotify auth error:', message);
+      this._lifecycle.authError = message;
+      this._renderDiagnostics(null);
     });
 
-    this.spotifyPlayer.addListener('account_error', () => {
+    this.spotifyPlayer.addListener('account_error', (e) => {
+      this._lifecycle.accountError = e?.message || true;
+      this._renderDiagnostics(null);
       document.getElementById('sdk-warning').classList.add('visible');
+    });
+
+    this.spotifyPlayer.addListener('playback_error', ({ message }) => {
+      this._lifecycle.playbackError = message;
+      this._renderDiagnostics(null);
+    });
+
+    this.spotifyPlayer.addListener('autoplay_failed', () => {
+      this._lifecycle.autoplayFailed = true;
+      this._renderDiagnostics(null);
     });
 
     this.spotifyPlayer.addListener('player_state_changed', (state) => {
       this._handleSpotifyStateChange(state);
     });
 
-    this.spotifyPlayer.connect();
+    const connectPromise = this.spotifyPlayer.connect();
+    this._lifecycle.connectCalled = true;
+    this._renderDiagnostics(null);
+    connectPromise.then(
+      (ok) => {
+        this._lifecycle.connectResult = ok ? 'success' : 'false';
+        this._renderDiagnostics(null);
+      },
+      (err) => {
+        this._lifecycle.connectResult = 'error: ' + (err?.message || err);
+        this._renderDiagnostics(null);
+      }
+    );
+    connectPromise.catch(() => {});
   }
 
   async _transferPlayback(deviceId, token) {
@@ -281,6 +334,7 @@ class ResonovaPlayer {
     this.completedItems++;
     this._updateProgress();
     this._updateSkipButton();
+    this._renderDiagnostics(null);
 
     if (item.type === 'audio') {
       this._playAudio(item);
@@ -436,6 +490,7 @@ class ResonovaPlayer {
       segType:   this.currentItem?.type || '-',
       queueRemaining: this.queue.length,
     };
+    const lc = this._lifecycle;
 
     // Build rows with warn class for critical fields
     const row = (label, value, warn) =>
@@ -450,6 +505,21 @@ class ResonovaPlayer {
       row('Prev',     d.prevCount) +
       row('Seg type', d.segType) +
       row('Queue',    d.queueRemaining) +
+      '<div class="spotify-diag-sep"></div>' +
+      row('SDK loaded',   lc.sdkLoaded ? 'yes' : 'no') +
+      row('Player built', lc.playerConstructed ? 'yes' : 'no') +
+      row('connect()',    lc.connectCalled ? (lc.connectResult || '...') : 'not called', !lc.connectCalled || (lc.connectCalled && !lc.connectResult)) +
+      row('ready',        lc.ready ? 'yes' : 'no', !lc.ready) +
+      row('device_id',    lc.deviceId || '-', !lc.deviceId) +
+      row('not_ready',    lc.notReady ? 'yes' : 'no') +
+      row('init_error',   lc.initError || '-', !!lc.initError) +
+      row('auth_error',   lc.authError || '-', !!lc.authError) +
+      row('acct_error',   lc.accountError ? 'yes' : 'no') +
+      row('playback_err', lc.playbackError || '-', !!lc.playbackError) +
+      row('autoplay_fail',lc.autoplayFailed ? 'yes' : 'no') +
+      row('SecureCtx',    lc.isSecureContext ? 'true' : 'false', !lc.isSecureContext) +
+      row('Protocol',     lc.protocol) +
+      row('UA',           (lc.userAgent || '').slice(0, 48) + (lc.userAgent && lc.userAgent.length > 48 ? '...' : '')) +
       '<button class="spotify-diag-refresh" id="spotify-diag-refresh">Refresh State</button>';
 
     // Bind refresh button (re-bind every render since innerHTML replaces it)

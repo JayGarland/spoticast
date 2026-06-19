@@ -1097,6 +1097,12 @@ body::after {
   color: var(--on-air);
 }
 
+.spotify-diag-sep {
+  height: 1px;
+  margin: 0.45rem 0;
+  background: var(--panel-border);
+}
+
 .spotify-diag-refresh {
   display: block;
   width: 100%;
