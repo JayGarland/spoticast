@@ -4,6 +4,8 @@
 
 Do not rush another large playback patch. HTTPS fixed the main mobile Spotify SDK blocker, and owner testing later showed lockscreen playback can work. Treat the remaining problem as intermittent reliability hardening, not an emergency rollback or architecture failure.
 
+Update, 2026-06-19: the owner reproduced a production issue where phone idle/lockscreen playback stops after a while and does not continue. This moves mobile playback hardening from "parked unless reproduced" to "active next implementation candidate."
+
 Next implementation should be small, reversible, and assigned to RUG with strict file limits.
 
 ## Immediate Improvement
@@ -26,7 +28,7 @@ Acceptance:
 
 ## Playback Hardening Candidates
 
-Implement only after the diagnostic toggle, and only if the owner can reproduce interruption again.
+Implement now that the owner reproduced lockscreen/idle stopping. Keep the patch small and reversible.
 
 ### Phase 1: Token callback fallback
 
@@ -55,6 +57,33 @@ Why:
 - Covers missing `player_state_changed` events during lockscreen/background.
 - Higher risk than Phases 1-2 because it can skip music if duration data is wrong, so it needs careful tests.
 
+## Current Active Issue
+
+Boss report:
+
+```text
+When the phone is idle or lockscreen a while, playback stops and does not continue.
+```
+
+Likely target set:
+
+1. Token callback fallback.
+2. Fade-step cap.
+3. Carefully bounded Spotify segment deadline only if the implementation can prove it is tied to the current item.
+
+Do not implement a general retry loop, polling monitor, or broad lifecycle state machine.
+
+## External Audit Inputs
+
+The external product auditor also found:
+
+- No Media Session API, so lockscreen controls cannot expose next/previous segment.
+- Current app UI only has Skip; no in-app play/pause/previous.
+- Current queue uses `Array.shift()`, making previous/resume harder.
+- Separate data bug: outro writes to shared `generated/outro.mp3`.
+
+Reference: `docs/handoffs/External Product UX Design Audit Handoff.md`
+
 ## Parked Work
 
 - Persistent taste/profile memory.
@@ -71,4 +100,3 @@ Why:
 - Use RUG for small bounded playback hardening phases if owner approves.
 - Use gem-orchestrator only for fresh diagnosis when symptoms become contradictory or reproducibility disappears.
 - Chef layer must inspect manager response, handoff, `git status`, and `git diff` before accepting.
-
