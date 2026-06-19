@@ -32,11 +32,12 @@ class Settings(BaseSettings):
 
     max_tracks: int = 30
     host: str = "127.0.0.1"
+    public_host: str = "127.0.0.1"
     port: int = 8765
 
     @property
     def redirect_uri(self) -> str:
-        return f"http://127.0.0.1:{self.port}/auth/callback"
+        return f"http://{self.public_host}:{self.port}/auth/callback"
 
     @property
     def spotify_scopes(self) -> str:
