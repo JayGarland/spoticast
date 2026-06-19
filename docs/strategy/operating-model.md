@@ -108,6 +108,9 @@ For now, every nontrivial manager handoff must return to the strategy / chief-of
 
 Review responsibilities:
 
+- Inspect the manager's chat response.
+- Inspect the manager's handoff/report file.
+- Inspect `git status` and `git diff` before accepting the work.
 - Check whether the handoff answered the original owner-level goal.
 - Check whether the manager stayed inside scope.
 - Check whether evidence is strong enough.

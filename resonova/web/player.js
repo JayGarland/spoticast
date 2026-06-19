@@ -27,41 +27,6 @@ class ResonovaPlayer {
     this._trackEndFired      = false;
     // True once the server has finished synthesizing all tracks
     this._generationComplete = true;
-
-    // ── Health monitor (Phase 1.1) ────────────────────────────────────────
-    this._lastProgressTime   = Date.now();
-    this._playbackStalled    = false;
-    this._healthCheckInterval = null;
-
-    // ── Diagnostic logging (Phase 1.2) ────────────────────────────────────
-    this._eventLog           = [];
-    window.__resonovaEventLog = this._eventLog;
-
-    // ── Audio segment transition fix (Phase 2.1) ──────────────────────────
-    this._audioEndedCleanly  = true;
-    this._audioCleanup       = null;
-
-    // ── Visibility & focus recovery (Phase 4) ─────────────────────────────
-    this._needsUserGesture   = false;
-    this._lastRecoveryAttempt = 0;
-    this._hiddenSince        = null;
-    this._listenersRegistered = false;
-
-    // ── Mobile/desktop detection (Phase 6) ────────────────────────────────
-    this._isMobile = navigator.maxTouchPoints > 0 && /Mobi|Android/i.test(navigator.userAgent);
-
-    // ── AudioContext unlock (Phase 7) ─────────────────────────────────────
-    this._audioUnlocked      = false;
-
-    // ── Spotify track transition (Phase 3) ────────────────────────────────
-    this._spotifyTrackTimeout = null;
-    this._spotifyStartTimeout = null;
-    this._spotifyTrackDuration = null;
-    this._spotifyLastStateTime = 0;
-    this._spotifyLastPosition = 0;
-    this._spotifyLastDuration = 0;
-    this._spotifyCurrentUri = null;
-    this._spotifyStartedForCurrentItem = false;
   }
 
   // ──────────────────────────────────────────────
@@ -78,19 +43,6 @@ class ResonovaPlayer {
     this._loadSpotifySDK();
     this._loadLibrary();
     this._initLastFM();
-
-    // ── Health monitor ─────────────────────────────────────────────────
-    this._startHealthMonitor();
-    // ── Visibility / focus recovery ────────────────────────────────────
-    this._registerRecoveryListeners();
-    // ── Unlock AudioContext on first user gesture (mobile Safari) ─────
-    this._unlockAudioOnGesture();
-    // ── Media Session API (Phase 5) ────────────────────────────────────
-    this._setupMediaSessionHandlers();
-    // ── Resume overlay integration ────────────────────────────────────
-    document.addEventListener('resume-requested', () => {
-      this._tryRecoverPlayback();
-    });
   }
 
   // ── Last.fm widget ──────────────────────────────────────────────────────
@@ -304,7 +256,6 @@ class ResonovaPlayer {
     this.queue          = [...queue];
     this.totalItems     = queue.length;
     this.completedItems = 0;
-    this._clearStallFlag();
     this._showState('playing');
     document.getElementById('on-air-badge').classList.add('active');
     this._updateSkipButton();
@@ -323,20 +274,11 @@ class ResonovaPlayer {
     }
 
     const item = this.queue.shift();
-    const previousItem = this.currentItem;
     this.currentItem    = item;
     this._trackEndFired = false;
     this.completedItems++;
     this._updateProgress();
     this._updateSkipButton();
-
-    this._logPlaybackEvent('transition', {
-      from: previousItem ? { type: previousItem.type } : null,
-      to: { type: item.type },
-      queueLength: this.queue.length,
-    });
-
-    this._clearStallFlag();
 
     if (item.type === 'audio') {
       this._playAudio(item);
@@ -346,12 +288,6 @@ class ResonovaPlayer {
   }
 
   _playAudio(item) {
-    // Clean up any previous audio listeners (e.g. from skip or retry)
-    if (this._audioCleanup) {
-      this._audioCleanup();
-      this._audioCleanup = null;
-    }
-
     this._setSegmentType('commentary');
     this._setNowPlaying('AI Commentary', 'Podcast Intro');
 
@@ -371,21 +307,11 @@ class ResonovaPlayer {
     this.audioEl.volume = 1;
     this.audioEl.src = item.url;
     this._crossfadeTriggered = false;
-    this._audioEndedCleanly = true;
 
-    // ── Media Session metadata (Phase 5.1) ────────────────────────────
-    this._updateMediaSession(item.title || 'Resonova Commentary', 'Resonova', 'Daily Music Briefing');
-    this._setMediaSessionState('playing');
-
-    const audioEl = this.audioEl;
-    // Track for timeupdate fallback — detect when onended doesn't fire
-    let lastTime = 0;
-    let lastChangeTime = Date.now();
-
-    // Crossfade handler — fade out commentary ~2s before end
-    const crossfadeHandler = () => {
-      if (!this._crossfadeTriggered && audioEl.duration > 0) {
-        const remaining = (audioEl.duration - audioEl.currentTime) * 1000;
+    // Fade out commentary ~2s before end so it flows smoothly into the next segment
+    this.audioEl.ontimeupdate = () => {
+      if (!this._crossfadeTriggered && this.audioEl.duration > 0) {
+        const remaining = (this.audioEl.duration - this.audioEl.currentTime) * 1000;
         if (remaining < _CROSSFADE_MS && remaining > 0) {
           this._crossfadeTriggered = true;
           this._fadeAudioVolume(1, 0, remaining);
@@ -393,106 +319,19 @@ class ResonovaPlayer {
       }
     };
 
-    // Timeupdate fallback — triggers transition when onended fails to fire
-    const timeupdateFallback = () => {
-      const now = Date.now();
-      if (audioEl.currentTime !== lastTime) {
-        lastTime = audioEl.currentTime;
-        lastChangeTime = now;
-        this._lastProgressTime = now;
-      }
-      // Only use fallback if duration is valid (not NaN / Infinity)
-      if (audioEl.duration && isFinite(audioEl.duration) && audioEl.duration > 0) {
-        if (audioEl.currentTime >= audioEl.duration - 0.5 && now - lastChangeTime > 2000) {
-          audioCleanup();
-          this._audioEndedCleanly = false;
-          this._logPlaybackEvent('audio-ended-fallback');
-          this._playNext();
-        }
-      }
-    };
-
-    // Shared cleanup — prevents double-firing between onended and fallback
-    const audioCleanup = () => {
-      audioEl.removeEventListener('timeupdate', crossfadeHandler);
-      audioEl.removeEventListener('timeupdate', timeupdateFallback);
-      audioEl.onended = null;
-      this._audioCleanup = null;
-    };
-    this._audioCleanup = audioCleanup;
-
-    audioEl.addEventListener('timeupdate', crossfadeHandler);
-    audioEl.addEventListener('timeupdate', timeupdateFallback);
-
-    audioEl.onended = () => {
-      audioCleanup();
-      this._audioEndedCleanly = true;
-      this._logPlaybackEvent('audio-ended');
+    this.audioEl.onended = () => {
+      this.audioEl.ontimeupdate = null;
       this._playNext();
     };
 
-    this._logPlaybackEvent('audio-start', { url: item.url });
-    this._lastProgressTime = Date.now();
-
-    audioEl.play().catch(err => {
+    this.audioEl.play().catch(err => {
       console.error('Audio play failed:', err);
-      if (err.name === 'NotAllowedError') {
-        this._logPlaybackEvent('not-allowed', { state: 'play' });
-        this._needsUserGesture = true;
-        this._playbackStalled = true;
-        if (typeof window.__resonovaShowResume === 'function') {
-          window.__resonovaShowResume(true);
-        }
-      } else if (err.name === 'AbortError') {
-        this._logPlaybackEvent('audio-play-error', { errorName: 'AbortError', errorMessage: err.message });
-        // Retry up to 3 times with backoff
-        this._retryPlay(item, audioEl, 0);
-      } else if (err.name === 'NotSupportedError') {
-        this._logPlaybackEvent('audio-skipped', { reason: 'NotSupportedError' });
-        audioCleanup();
-        this._playNext();
-      } else {
-        this._logPlaybackEvent('audio-play-error', { errorName: err.name, errorMessage: err.message });
-        // Retry once after 1 second for unknown errors
-        setTimeout(() => {
-          audioEl.play().catch(() => {
-            audioCleanup();
-            this._playNext();
-          });
-        }, 1000);
-      }
+      this._playNext();
     });
   }
 
   async _playSpotifyTrack(item) {
-    // ── SDK readiness check (Phase 3.3) ─────────────────────────────────
-    if (!this.spotifyPlayer) {
-      this._logPlaybackEvent('spotify-error', { reason: 'no-player' });
-      this._markSpotifyStalled('Spotify player is not ready.');
-      return;
-    }
-
-    if (!this.deviceId) {
-      // Wait up to 5s for device to become ready
-      const ready = await new Promise(resolve => {
-        const check = setInterval(() => {
-          if (this.deviceId) { clearInterval(check); resolve(true); }
-        }, 200);
-        setTimeout(() => { clearInterval(check); resolve(false); }, 5000);
-      });
-      if (!ready) {
-        this._logPlaybackEvent('spotify-error', { reason: 'no-device' });
-        this._markSpotifyStalled('Spotify device is not ready.');
-        return;
-      }
-    }
-
     this._setSegmentType('spotify');
-    this._logPlaybackEvent('spotify-start', { uri: item.uri });
-    this._lastProgressTime = Date.now();
-    this._spotifyCurrentUri = item.uri;
-    this._spotifyStartedForCurrentItem = false;
-    document.getElementById('next-up').textContent = 'Starting Spotify track...';
 
     document.getElementById('waveform').classList.add('spotify-mode');
     document.getElementById('waveform').classList.remove('paused');
@@ -500,94 +339,45 @@ class ResonovaPlayer {
 
     const { token } = await this._apiFetch('/auth/token');
 
-    // Fetch track info — check cache first (Phase 8.1: retry on transient failures)
+    // Fetch track info — check cache first
     const cached = this._cacheGet(item.uri);
     if (cached) {
       this._setNowPlaying(cached.name, cached.artist);
       item.name = cached.name;
       item.artist = cached.artist;
-      this._spotifyTrackDuration = cached.duration_ms || 240000;
       document.getElementById('next-up').textContent = '';
     } else {
       try {
         const trackId = item.uri.split(':')[2];
-        const trackRes = await this._fetchWithRetry(
-          `https://api.spotify.com/v1/tracks/${trackId}`,
-          { headers: { 'Authorization': `Bearer ${token}` } }
-        );
-        const trackData = await trackRes.json();
-        const artist = trackData.artists.map(a => a.name).join(', ');
-        this._setNowPlaying(trackData.name, artist);
-        item.name = trackData.name;
-        item.artist = artist;
-        this._spotifyTrackDuration = trackData.duration_ms;
-        this._cacheSet(item.uri, { name: trackData.name, artist, duration_ms: trackData.duration_ms });
-        document.getElementById('next-up').textContent = '';
-      } catch (_) {
-        // Track info fetch failed — continue with defaults
-        this._logPlaybackEvent('spotify-error', { reason: 'track-info-fetch-failed' });
-        this._spotifyTrackDuration = 240000;
-      }
+        const trackRes = await fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        if (trackRes.ok) {
+          const trackData = await trackRes.json();
+          const artist = trackData.artists.map(a => a.name).join(', ');
+          this._setNowPlaying(trackData.name, artist);
+          item.name = trackData.name;
+          item.artist = artist;
+          this._cacheSet(item.uri, { name: trackData.name, artist });
+          document.getElementById('next-up').textContent = '';
+        }
+      } catch (_) {}
     }
 
-    // Update Media Session metadata (Phase 5.1)
-    this._updateMediaSession(
-      item.name || 'Spotify Track',
-      item.artist || 'Unknown Artist',
-      'Daily Music Briefing'
-    );
-    this._setMediaSessionState('playing');
-
-    // ── Play the track (Phase 8.2: retry on transient failures) ────────
     try {
-      if (this.spotifyPlayer) {
-        await this.spotifyPlayer.setVolume(0.85);
-      }
-      await this._fetchWithRetry(
-        `https://api.spotify.com/v1/me/player/play?device_id=${this.deviceId}`,
-        {
-          method: 'PUT',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ uris: [item.uri] }),
-        }
-      );
-
-      if (this._spotifyStartTimeout) {
-        clearTimeout(this._spotifyStartTimeout);
-      }
-      this._spotifyStartTimeout = setTimeout(() => {
-        if (this.currentItem?.type === 'spotify' && !this._spotifyStartedForCurrentItem) {
-          this._logPlaybackEvent('spotify-start-timeout', { uri: item.uri });
-          this._markSpotifyStalled('Spotify playback did not confirm start.');
-        }
-      }, 12000);
-
-      // ── Fallback timer (Phase 3.1) ────────────────────────────────────
-      const duration = this._spotifyTrackDuration || 240000;
-      if (this._spotifyTrackTimeout) {
-        clearTimeout(this._spotifyTrackTimeout);
-      }
-      this._spotifyTrackTimeout = setTimeout(() => {
-        this._logPlaybackEvent('spotify-ended-fallback', { reason: 'timeout' });
-        this._spotifyTrackTimeout = null;
-        if (!this._trackEndFired) {
-          this._trackEndFired = true;
-          this._fadeSpotifyVolume(0.85, 0, 2000).then(() => this._playNext());
-        }
-      }, duration + 15000);
-
+      // Restore full volume whenever we start a Spotify track
+      await this.spotifyPlayer.setVolume(0.85);
+      await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${this.deviceId}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ uris: [item.uri] }),
+      });
     } catch (err) {
-      if (err && err.status === 404) {
-        this._logPlaybackEvent('spotify-error', { reason: 'device-not-found' });
-        this.deviceId = null;
-      } else {
-        this._logPlaybackEvent('spotify-error', { reason: 'play-api-failed' });
-      }
       console.error('Spotify play failed:', err);
-      this._markSpotifyStalled('Spotify playback did not start.');
+      this._playNext();
     }
   }
 
@@ -596,57 +386,14 @@ class ResonovaPlayer {
     if (this.currentItem?.type !== 'spotify') return;
 
     const { paused, position, track_window } = state;
-    const previousPosition = this._spotifyLastPosition;
-    const currentTrackUri = track_window?.current_track?.uri;
-    const isCurrentTrack = !this._spotifyCurrentUri || currentTrackUri === this._spotifyCurrentUri;
 
-    // Track state for near-end detection (Phase 3.2)
-    this._spotifyLastStateTime = Date.now();
-    this._spotifyLastPosition = position;
-    this._spotifyLastDuration = state.duration;
-    const hasRealProgress = position > 1000 || (position > 0 && position > previousPosition);
-    if (isCurrentTrack && hasRealProgress) {
-      this._spotifyStartedForCurrentItem = true;
-      if (this._spotifyStartTimeout) {
-        clearTimeout(this._spotifyStartTimeout);
-        this._spotifyStartTimeout = null;
+    // Track ended: paused, at the very start, and there's a track in history
+    if (paused && position === 0 && track_window.previous_tracks.length > 0) {
+      if (!this._trackEndFired) {
+        this._trackEndFired = true;
+        // Fade Spotify out while commentary starts (crossfade)
+        this._fadeSpotifyVolume(0.85, 0, _CROSSFADE_MS).then(() => this._playNext());
       }
-    }
-    if (isCurrentTrack && !paused && position !== previousPosition) {
-      this._lastProgressTime = Date.now();
-    }
-
-    // End detection — multiple conditions (Phase 3.2)
-    let isEnded = false;
-
-    // Condition 1: paused, at start, and there's history (original behavior)
-    if (this._spotifyStartedForCurrentItem && paused && position === 0 && track_window.previous_tracks.length > 0) {
-      isEnded = true;
-    }
-
-    // Condition 2: paused, at start, no current track loaded (SDK lost the track)
-    if (this._spotifyStartedForCurrentItem && paused && position === 0 && !track_window.current_track) {
-      isEnded = true;
-    }
-
-    // Condition 3: near-end — store state for health monitor to pick up
-    // (handled via _spotifyLastStateTime / _spotifyLastPosition in _startHealthMonitor)
-
-    if (isEnded && !this._trackEndFired) {
-      this._trackEndFired = true;
-      // Clear fallback timer (Phase 3.1)
-      if (this._spotifyTrackTimeout) {
-        clearTimeout(this._spotifyTrackTimeout);
-        this._spotifyTrackTimeout = null;
-      }
-      if (this._spotifyStartTimeout) {
-        clearTimeout(this._spotifyStartTimeout);
-        this._spotifyStartTimeout = null;
-      }
-      this._logPlaybackEvent('spotify-ended');
-      this._lastProgressTime = Date.now();
-      // Fade Spotify out while commentary starts (crossfade)
-      this._fadeSpotifyVolume(0.85, 0, _CROSSFADE_MS).then(() => this._playNext());
     }
   }
 
@@ -656,10 +403,6 @@ class ResonovaPlayer {
     this._setNowPlaying('Episode Complete', '');
     this._setSegmentType('');
     document.getElementById('next-up').textContent = 'Thanks for listening.';
-    this._lastProgressTime = Date.now();
-    // ── Clear Media Session (Phase 5.1) ───────────────────────────────
-    this._setMediaSessionState('none');
-    this._updateMediaSession(null, null, null);
   }
 
   // ──────────────────────────────────────────────
@@ -896,248 +639,6 @@ class ResonovaPlayer {
   }
 
   // ──────────────────────────────────────────────
-  // Playback health & diagnostics (Phase 1)
-  // ──────────────────────────────────────────────
-
-  _startHealthMonitor() {
-    const interval = this._isMobile ? 3000 : 5000;
-    const threshold = this._isMobile ? 10000 : 15000;
-    this._healthCheckInterval = setInterval(() => {
-      // If a commentary segment reached the end while the browser was
-      // backgrounded and `ended` did not dispatch, advance when JS wakes up.
-      if (this.currentItem?.type === 'audio' && this.audioEl) {
-        if (this._isAudioAtEnd()) {
-          this._logPlaybackEvent('audio-ended-healthcheck');
-          if (this._audioCleanup) {
-            this._audioCleanup();
-            this._audioCleanup = null;
-          }
-          this._lastProgressTime = Date.now();
-          this._playNext();
-          return;
-        }
-      }
-
-      // ── Near-end Spotify track detection (Phase 3.2) ──────────────────
-      if (this.currentItem?.type === 'spotify' && !this._trackEndFired && this._spotifyStartedForCurrentItem) {
-        const sinceLastState = Date.now() - this._spotifyLastStateTime;
-        if (sinceLastState > 8000 && this._spotifyLastPosition > 0 && this._spotifyLastDuration > 0) {
-          const remaining = this._spotifyLastDuration - this._spotifyLastPosition;
-          if (remaining < 3000) {
-            this._trackEndFired = true;
-            // Clear fallback timer (Phase 3.1)
-            if (this._spotifyTrackTimeout) {
-              clearTimeout(this._spotifyTrackTimeout);
-              this._spotifyTrackTimeout = null;
-            }
-            this._logPlaybackEvent('spotify-ended-near', {
-              position: this._spotifyLastPosition,
-              duration: this._spotifyLastDuration,
-              remaining,
-              sinceLastState,
-            });
-            this._lastProgressTime = Date.now();
-            this._fadeSpotifyVolume(0.85, 0, _CROSSFADE_MS).then(() => this._playNext());
-            return;
-          }
-        }
-      }
-
-      if (Date.now() - this._lastProgressTime > threshold) {
-        this._playbackStalled = true;
-        if (this.currentItem && this.audioEl) {
-          this._logPlaybackEvent('stall-detected', {
-            itemType: this.currentItem.type,
-            stalledFor: Date.now() - this._lastProgressTime,
-          });
-        }
-      }
-    }, interval);
-  }
-
-  _clearStallFlag() {
-    this._playbackStalled = false;
-    this._lastProgressTime = Date.now();
-  }
-
-  _logPlaybackEvent(type, detail) {
-    const entry = {
-      type,
-      detail,
-      timestamp: Date.now(),
-      visibilityState: document.visibilityState,
-    };
-    this._eventLog.push(entry);
-    // Ring buffer — keep only last 100 entries
-    if (this._eventLog.length > 100) {
-      this._eventLog.shift();
-    }
-  }
-
-  // ──────────────────────────────────────────────
-  // Visibility & focus recovery (Phase 4)
-  // ──────────────────────────────────────────────
-
-  _registerRecoveryListeners() {
-    if (this._listenersRegistered) return;
-    this._listenersRegistered = true;
-
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden') {
-        this._hiddenSince = Date.now();
-      } else {
-        this._tryRecoverPlayback();
-      }
-    });
-
-    window.addEventListener('focus', () => {
-      this._tryRecoverPlayback();
-    });
-
-    window.addEventListener('pageshow', (event) => {
-      // bfcache restore on mobile — page was frozen, always attempt recovery
-      if (event.persisted) {
-        this._logPlaybackEvent('visibility-recovery', { type: 'bfcache-restore' });
-        this._tryRecoverPlayback();
-      }
-    });
-  }
-
-  _tryRecoverPlayback() {
-    const now = Date.now();
-    // Debounce: at most one recovery attempt per second
-    if (now - this._lastRecoveryAttempt < 1000) return;
-    this._lastRecoveryAttempt = now;
-
-    if (document.visibilityState !== 'visible') return;
-    if (!this._playbackStalled) return;
-
-    if (this.currentItem?.type === 'audio' && this.audioEl) {
-      this._logPlaybackEvent('visibility-recovery', { type: 'audio' });
-      if (this._isAudioAtEnd()) {
-        this._logPlaybackEvent('audio-ended-recovery');
-        if (this._audioCleanup) {
-          this._audioCleanup();
-          this._audioCleanup = null;
-        }
-        this._clearStallFlag();
-        this._playNext();
-        return;
-      }
-      this.audioEl.play().then(() => {
-        this._clearStallFlag();
-        if (typeof window.__resonovaShowResume === 'function') {
-          window.__resonovaShowResume(false);
-        }
-      }).catch(err => {
-        if (err.name === 'NotAllowedError') {
-          this._needsUserGesture = true;
-          this._logPlaybackEvent('not-allowed', { state: 'recovery' });
-          if (typeof window.__resonovaShowResume === 'function') {
-            window.__resonovaShowResume(true);
-          }
-        }
-      });
-    } else if (this.currentItem?.type === 'spotify' && this.spotifyPlayer) {
-      this._logPlaybackEvent('visibility-recovery', { type: 'spotify' });
-      this.spotifyPlayer.resume().then(() => {
-        this._clearStallFlag();
-      }).catch(() => {
-        this._markSpotifyStalled('Spotify playback did not resume.');
-      });
-    }
-
-    // Clear stall after attempt — don't keep retrying automatically
-    this._clearStallFlag();
-  }
-
-  _isAudioAtEnd() {
-    if (!this.audioEl) return false;
-    const { currentTime, duration, ended } = this.audioEl;
-    if (ended) return true;
-    if (!duration || !isFinite(duration)) return false;
-    return currentTime >= duration - 0.25;
-  }
-
-  _markSpotifyStalled(message) {
-    this._playbackStalled = true;
-    this._lastProgressTime = Date.now();
-    this._setMediaSessionState('paused');
-    document.getElementById('next-up').textContent =
-      `${message} Use the system play control, return to Spotify, or press Skip to continue.`;
-    if (typeof window.__resonovaShowResume === 'function') {
-      window.__resonovaShowResume(true);
-    }
-  }
-
-  // ──────────────────────────────────────────────
-  // AudioContext unlock (Phase 7) — mobile Safari
-  // ──────────────────────────────────────────────
-
-  _unlockAudioOnGesture() {
-    const unlock = () => {
-      if (this._audioUnlocked) return;
-      try {
-        const ctx = new AudioContext();
-        ctx.resume().then(() => {
-          // Create a silent oscillator to actually "use" the context
-          const osc = ctx.createOscillator();
-          const gain = ctx.createGain();
-          gain.gain.value = 0.001;
-          osc.connect(gain);
-          gain.connect(ctx.destination);
-          osc.start(0);
-          osc.stop(ctx.currentTime + 0.001);
-          setTimeout(() => {
-            ctx.close();
-            this._audioUnlocked = true;
-          }, 100);
-        }).catch(() => {
-          // Resume may fail if user hasn't interacted yet — that's fine
-        });
-      } catch (_) {
-        // AudioContext constructor may throw in rare cases
-      }
-    };
-    document.addEventListener('click', unlock, { once: true });
-    document.addEventListener('touchstart', unlock, { once: true });
-    document.addEventListener('keydown', unlock, { once: true });
-  }
-
-  // ──────────────────────────────────────────────
-  // play() error retry helper (Phase 2.2)
-  // ──────────────────────────────────────────────
-
-  _retryPlay(item, audioEl, attempt) {
-    const backoff = [200, 400, 800];
-    if (attempt >= backoff.length || this.currentItem !== item) {
-      this._logPlaybackEvent('audio-skipped', { reason: 'AbortError-retries-exhausted' });
-      if (this._audioCleanup) {
-        this._audioCleanup();
-        this._audioCleanup = null;
-      }
-      this._playNext();
-      return;
-    }
-    setTimeout(() => {
-      audioEl.play().catch(err => {
-        console.error('Audio play retry failed:', err);
-        // If it's still AbortError, keep retrying; otherwise escalate
-        if (err.name === 'AbortError') {
-          this._retryPlay(item, audioEl, attempt + 1);
-        } else {
-          this._logPlaybackEvent('audio-skipped', { reason: 'AbortError-escalated:' + err.name });
-          if (this._audioCleanup) {
-            this._audioCleanup();
-            this._audioCleanup = null;
-          }
-          this._playNext();
-        }
-      });
-    }, backoff[attempt]);
-  }
-
-  // ──────────────────────────────────────────────
   // Skip & crossfade
   // ──────────────────────────────────────────────
 
@@ -1145,24 +646,13 @@ class ResonovaPlayer {
     if (!this.currentItem) return;
     if (this.currentItem.type === 'audio') {
       this._crossfadeTriggered = true;
-      if (this._audioCleanup) {
-        this._audioCleanup();
-        this._audioCleanup = null;
-      }
+      this.audioEl.ontimeupdate = null;
       this.audioEl.pause();
+      this.audioEl.onended = null;
       this._playNext();
     } else if (this.currentItem.type === 'spotify') {
       if (!this._trackEndFired) {
         this._trackEndFired = true;
-        // Clear fallback timer (Phase 3.1)
-        if (this._spotifyTrackTimeout) {
-          clearTimeout(this._spotifyTrackTimeout);
-          this._spotifyTrackTimeout = null;
-        }
-        if (this._spotifyStartTimeout) {
-          clearTimeout(this._spotifyStartTimeout);
-          this._spotifyStartTimeout = null;
-        }
         this.spotifyPlayer?.pause();
         this._playNext();
       }
@@ -1215,98 +705,6 @@ class ResonovaPlayer {
     try {
       localStorage.setItem(`sc:${uri}`, JSON.stringify({ ts: Date.now(), data }));
     } catch { /* quota exceeded — ignore */ }
-  }
-
-  // ──────────────────────────────────────────────
-  // Media Session API (Phase 5)
-  // ──────────────────────────────────────────────
-
-  _setupMediaSessionHandlers() {
-    if (!('mediaSession' in navigator)) return;
-
-    navigator.mediaSession.setActionHandler('play', () => {
-      if (this._playbackStalled) {
-        this._tryRecoverPlayback();
-      } else if (this.currentItem?.type === 'audio' && this.audioEl) {
-        this.audioEl.play().catch(() => {});
-      } else if (this.currentItem?.type === 'spotify' && this.spotifyPlayer) {
-        this.spotifyPlayer.resume().catch(() => {});
-      }
-    });
-
-    navigator.mediaSession.setActionHandler('pause', () => {
-      if (this.currentItem?.type === 'audio' && this.audioEl && !this.audioEl.paused) {
-        this.audioEl.pause();
-        this._setMediaSessionState('paused');
-      } else if (this.currentItem?.type === 'spotify' && this.spotifyPlayer) {
-        this.spotifyPlayer.pause().catch(() => {});
-        this._setMediaSessionState('paused');
-      }
-    });
-
-    navigator.mediaSession.setActionHandler('nexttrack', () => {
-      this.skip();
-    });
-
-    navigator.mediaSession.setActionHandler('previoustrack', () => {
-      // No-op — linear playback only
-    });
-  }
-
-  _updateMediaSession(title, artist, album) {
-    if (!('mediaSession' in navigator)) return;
-    if (!title) {
-      navigator.mediaSession.metadata = null;
-    } else {
-      navigator.mediaSession.metadata = new MediaMetadata({
-        title: title,
-        artist: artist || 'Resonova',
-        album: album || 'Daily Music Briefing',
-      });
-    }
-  }
-
-  _setMediaSessionState(state) {
-    if (!('mediaSession' in navigator)) return;
-    navigator.mediaSession.playbackState = state;
-  }
-
-  // ──────────────────────────────────────────────
-  // Fetch retry helper (Phase 8)
-  // ──────────────────────────────────────────────
-
-  async _fetchWithRetry(url, options, maxRetries = 2) {
-    let lastError;
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      try {
-        const res = await fetch(url, options);
-        if (res.ok) return res;
-        // 404 — don't retry, track/device doesn't exist
-        if (res.status === 404) throw res;
-        // 429 or 5xx — transient, retry with backoff
-        if (res.status === 429 || res.status >= 500) {
-          lastError = res;
-          if (attempt < maxRetries) {
-            await new Promise(r => setTimeout(r, (attempt + 1) * 1000));
-            continue;
-          }
-          throw res;
-        }
-        // Other client errors — don't retry
-        throw res;
-      } catch (err) {
-        // Network error (fetch throws TypeError) — retry
-        if (err instanceof TypeError) {
-          lastError = err;
-          if (attempt < maxRetries) {
-            await new Promise(r => setTimeout(r, (attempt + 1) * 1000));
-            continue;
-          }
-        }
-        throw err;
-      }
-    }
-    throw lastError;
   }
 }
 

@@ -240,15 +240,6 @@
         <span class="segment-type-label"></span>
       </div>
 
-      <!-- Resume overlay (shown when browser blocks autoplay) -->
-      <div id="resume-overlay" class="hidden">
-        <div class="resume-content">
-          <div class="resume-icon">▶</div>
-          <p class="resume-text">Tap to resume playback</p>
-          <p class="resume-subtext">Your browser requires interaction to continue</p>
-        </div>
-      </div>
-
       <!-- Now playing -->
       <div class="now-playing">
         <div class="now-playing-title" id="now-playing-title">Resonova</div>
@@ -333,88 +324,6 @@
   <audio id="resonova-audio" preload="auto"></audio>
 
   <script src="/web/player.js"></script>
-
-  <!-- Diagnostics panel (owner tool) -->
-  <div id="diagnostics-panel" class="hidden">
-    <div class="diagnostics-header">
-      <span>🔍 Playback Diagnostics</span>
-      <button id="diagnostics-toggle" title="Close">✕</button>
-    </div>
-    <div id="diagnostics-log">No events yet</div>
-  </div>
-  <button id="diagnostics-trigger" title="Show diagnostics">🔍</button>
-
-  <script>
-    // ── Resume overlay: click to resume playback after browser gesture lock ──
-    (function () {
-      var overlay = document.getElementById('resume-overlay');
-      if (!overlay) return;
-
-      overlay.addEventListener('click', function () {
-        overlay.classList.add('hidden');
-        var audio = document.getElementById('resonova-audio');
-        if (audio) {
-          audio.play().catch(function () {
-            /* player health monitor will retry */
-          });
-        }
-        /* Dispatch custom event so player.js can respond */
-        document.dispatchEvent(new CustomEvent('resume-requested'));
-      });
-
-      /* Expose a global helper so player.js can control visibility */
-      window.__resonovaShowResume = function (visible) {
-        if (visible) {
-          overlay.classList.remove('hidden');
-        } else {
-          overlay.classList.add('hidden');
-        }
-      };
-    })();
-
-    // ── Diagnostics panel: show/hide toggle ──
-    (function () {
-      var panel = document.getElementById('diagnostics-panel');
-      var trigger = document.getElementById('diagnostics-trigger');
-      var closeBtn = document.getElementById('diagnostics-toggle');
-      var logEl = document.getElementById('diagnostics-log');
-      if (!panel || !trigger || !closeBtn || !logEl) return;
-
-      function showPanel() {
-        panel.classList.remove('hidden');
-        trigger.classList.add('hidden');
-      }
-
-      function hidePanel() {
-        panel.classList.add('hidden');
-        trigger.classList.remove('hidden');
-      }
-
-      trigger.addEventListener('click', showPanel);
-      closeBtn.addEventListener('click', hidePanel);
-
-      /* Poll for a global event log if player.js exposes it */
-      var pollInterval = setInterval(function () {
-        if (window.__resonovaEventLog && Array.isArray(window.__resonovaEventLog)) {
-          var log = window.__resonovaEventLog;
-          var lines = log.slice(-50).map(function (entry) {
-            var time = entry.time || '';
-            var msg = entry.event || entry.msg || JSON.stringify(entry);
-            return '<div>' + escapeHtml(time) + ' ' + escapeHtml(msg) + '</div>';
-          });
-          logEl.innerHTML = lines.length ? lines.join('') : 'No events yet';
-          /* Auto-scroll to bottom */
-          panel.scrollTop = panel.scrollHeight;
-        }
-      }, 2000);
-
-      function escapeHtml(str) {
-        var div = document.createElement('div');
-        div.appendChild(document.createTextNode(str));
-        return div.innerHTML;
-      }
-    })();
-  </script>
 
 </body>
 </html>
