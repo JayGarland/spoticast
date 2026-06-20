@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import random
 try:
     from uuid import uuid7  # type: ignore[attr-defined]  # Python 3.14+
 except ImportError:
@@ -23,6 +22,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from resonova.config import settings
 from resonova import episodes as episodes_store
+from resonova import variety as variety_store
 from resonova.api import audio as audio_api
 from resonova.api import gemini as gemini_api
 from resonova.api import lastfm as lastfm_api
@@ -75,17 +75,9 @@ class Job:
 _jobs: dict[str, Job] = {}
 
 
-def _select_playlist_tracks_for_episode(tracks: list[Any]) -> list[Any]:
-    """Return a varied episode order from a playlist without mutating fetched data."""
-    max_tracks = settings.max_tracks
-    original_selection = list(tracks[:max_tracks])
-    episode_tracks = list(tracks)
-    for _ in range(5):
-        random.shuffle(episode_tracks)
-        selection = episode_tracks[:max_tracks]
-        if len(selection) < 2 or selection != original_selection:
-            return selection
-    return episode_tracks[:max_tracks]
+def _select_playlist_tracks_for_episode(tracks: list[Any], playlist_uri: str) -> list[Any]:
+    """Return a memory-aware varied episode order from a playlist."""
+    return variety_store.select_tracks_for_episode(tracks, playlist_uri, settings.max_tracks)
 
 
 # ---------------------------------------------------------------------------
@@ -190,10 +182,39 @@ async def api_episodes():
 
 @app.get("/api/episodes/{episode_id}")
 async def api_episode(episode_id: str):
-    ep = episodes_store.get_episode(episode_id)
+    try:
+        ep = episodes_store.get_episode(episode_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     if ep is None:
         raise HTTPException(status_code=404, detail="Episode not found")
     return JSONResponse(ep)
+
+
+class RenameEpisodeRequest(BaseModel):
+    name: str
+
+
+@app.patch("/api/episodes/{episode_id}")
+async def api_rename_episode(episode_id: str, req: RenameEpisodeRequest):
+    try:
+        updated = episodes_store.rename_episode(episode_id, req.name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Episode not found")
+    return JSONResponse(updated)
+
+
+@app.delete("/api/episodes/{episode_id}")
+async def api_delete_episode(episode_id: str):
+    try:
+        deleted = episodes_store.delete_episode(episode_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Episode not found")
+    return JSONResponse({"deleted": True, "id": episode_id})
 
 
 class GenerateRequest(BaseModel):
@@ -273,6 +294,10 @@ async def _run_generation(job: Job):
         job.push("progress", {"step": "fetch", "message": "Fetching playlist and user data..."})
 
         # Fetch tracks — either from a playlist URI or from a direct track list
+        _order_fingerprint: str | None = None
+        _track_order_preview: list[str] | None = None
+        _playlist_selected_uris: list[str] | None = None
+
         if job.track_uris:
             tracks = await loop.run_in_executor(
                 None, spotify_api.fetch_tracks, job.track_uris[:settings.max_tracks]
@@ -283,7 +308,10 @@ async def _run_generation(job: Job):
                 loop.run_in_executor(None, spotify_api.fetch_playlist, job.playlist_uri),
                 loop.run_in_executor(None, spotify_api.fetch_playlist_name, job.playlist_uri),
             )
-            tracks = _select_playlist_tracks_for_episode(tracks)
+            tracks = _select_playlist_tracks_for_episode(tracks, job.playlist_uri)
+            _playlist_selected_uris = [t.uri for t in tracks]
+            _order_fingerprint = variety_store.compute_fingerprint(_playlist_selected_uris)
+            _track_order_preview = [f"{t.artist} – {t.name}" for t in tracks[:3]]
 
         if not tracks:
             raise ValueError("No tracks found. Check the playlist link or track list.")
@@ -387,7 +415,13 @@ async def _run_generation(job: Job):
             playlist_name=job.playlist_name,
             track_count=total_tracks,
             queue=saved_queue,
+            order_fingerprint=_order_fingerprint,
+            track_order_preview=_track_order_preview,
         )
+
+        # Persist variety memory only after successful save (playlist episodes only)
+        if _playlist_selected_uris and job.playlist_uri:
+            variety_store.save_variety_memory(job.playlist_uri, _playlist_selected_uris)
 
         job.status = "done"
         job.push("done", {"episode_id": episode_id, "episode_name": episode_name})

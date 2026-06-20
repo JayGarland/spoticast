@@ -7,31 +7,31 @@
  */
 
 const STEP_MAP = {
-  fetch:    'step-fetch',
-  context:  'step-fetch',
+  fetch: 'step-fetch',
+  context: 'step-fetch',
   research: 'step-research',
-  script:   'step-script',
-  tts:      'step-tts',
+  script: 'step-script',
+  tts: 'step-tts',
 };
 
 class ResonovaPlayer {
   constructor() {
-    this.queue               = [];
-    this.playedItems         = [];
-    this.playbackTimeline    = [];
-    this.currentIndex        = -1;
-    this.totalItems          = 0;
-    this.completedItems      = 0;
-    this.deviceId            = null;
-    this._cachedToken        = null;
-    this.spotifyPlayer       = null;
-    this._segmentDeadline    = null;
-    this.audioEl             = document.getElementById('resonova-audio');
-    this.currentItem         = null;
-    this._episodeId           = null;
-    this._segmentType         = '';
+    this.queue = [];
+    this.playedItems = [];
+    this.playbackTimeline = [];
+    this.currentIndex = -1;
+    this.totalItems = 0;
+    this.completedItems = 0;
+    this.deviceId = null;
+    this._cachedToken = null;
+    this.spotifyPlayer = null;
+    this._segmentDeadline = null;
+    this.audioEl = document.getElementById('resonova-audio');
+    this.currentItem = null;
+    this._episodeId = null;
+    this._segmentType = '';
     // Prevents double-firing of playNext on track end
-    this._trackEndFired      = false;
+    this._trackEndFired = false;
     // True once the server has finished synthesizing all tracks
     this._generationComplete = true;
     this._diagEl = null; // diagnostic overlay, lazily created
@@ -137,14 +137,14 @@ class ResonovaPlayer {
 
         // First try to reconnect existing player.
         if (this.spotifyPlayer) {
-          try { await this.spotifyPlayer.connect(); } catch (_) {}
+          try { await this.spotifyPlayer.connect(); } catch (_) { }
         }
 
         let deviceId = await this._waitForSpotifyDevice(3000);
 
         // If reconnect did not produce a device, rebuild once.
         if (!deviceId) {
-          try { this.spotifyPlayer?.disconnect(); } catch (_) {}
+          try { this.spotifyPlayer?.disconnect(); } catch (_) { }
           this.spotifyPlayer = null;
           this.deviceId = null;
           this._lifecycle.ready = false;
@@ -330,10 +330,10 @@ class ResonovaPlayer {
     const timeline = Array.isArray(state.playbackTimeline)
       ? [...state.playbackTimeline]
       : [
-          ...(Array.isArray(state.playedItems) ? state.playedItems : []),
-          ...(state.currentItem ? [state.currentItem] : []),
-          ...state.queue,
-        ];
+        ...(Array.isArray(state.playedItems) ? state.playedItems : []),
+        ...(state.currentItem ? [state.currentItem] : []),
+        ...state.queue,
+      ];
     const startIndex = Math.max(0, state.currentIndex ?? (state.playedItems?.length || 0));
     const queue = timeline.slice(startIndex);
 
@@ -555,7 +555,7 @@ class ResonovaPlayer {
         this._renderDiagnostics(null);
       }
     );
-    connectPromise.catch(() => {});
+    connectPromise.catch(() => { });
   }
 
   async _transferPlayback(deviceId, token) {
@@ -662,7 +662,7 @@ class ResonovaPlayer {
       es.close();
       this._generationComplete = true;
       let msg = 'Generation failed.';
-      try { msg = JSON.parse(e.data).message; } catch (_) {}
+      try { msg = JSON.parse(e.data).message; } catch (_) { }
       this._showState('connected');
       this._showError(msg);
     });
@@ -673,11 +673,11 @@ class ResonovaPlayer {
   // ──────────────────────────────────────────────
 
   _startPlayback(queue, options = {}) {
-    this.queue          = [...queue];
-    this.playedItems    = [];
+    this.queue = [...queue];
+    this.playedItems = [];
     this.playbackTimeline = options.timeline ? [...options.timeline] : [...queue];
-    this.currentIndex   = -1;
-    this.totalItems     = queue.length;
+    this.currentIndex = -1;
+    this.totalItems = queue.length;
     this.completedItems = 0;
     this._showState('playing');
     document.getElementById('on-air-badge').classList.add('active');
@@ -704,7 +704,7 @@ class ResonovaPlayer {
     }
 
     const item = this.queue.shift();
-    this.currentItem    = item;
+    this.currentItem = item;
     let timelineIndex = this.playbackTimeline.indexOf(item);
     if (timelineIndex === -1) {
       this.playbackTimeline.push(item);
@@ -816,7 +816,7 @@ class ResonovaPlayer {
           this._cacheSet(item.uri, { name: trackData.name, artist });
           document.getElementById('next-up').textContent = '';
         }
-      } catch (_) {}
+      } catch (_) { }
     }
 
     try {
@@ -909,13 +909,13 @@ class ResonovaPlayer {
     };
 
     const d = {
-      paused:    state ? (state.paused ? 'yes' : 'no') : 'waiting',
-      position:  state ? fmtMs(state.position) : '--:--',
-      duration:  state ? fmtMs(state.duration) : '--:--',
-      track:     (state?.track_window?.current_track?.name || 'waiting for Spotify state').slice(0, 32),
-      deviceId:  this.deviceId ? 'yes' : 'NO',
+      paused: state ? (state.paused ? 'yes' : 'no') : 'waiting',
+      position: state ? fmtMs(state.position) : '--:--',
+      duration: state ? fmtMs(state.duration) : '--:--',
+      track: (state?.track_window?.current_track?.name || 'waiting for Spotify state').slice(0, 32),
+      deviceId: this.deviceId ? 'yes' : 'NO',
       prevCount: state?.track_window?.previous_tracks?.length ?? '-',
-      segType:   this.currentItem?.type || '-',
+      segType: this.currentItem?.type || '-',
       queueRemaining: this.queue.length,
     };
     const lc = this._lifecycle;
@@ -925,29 +925,29 @@ class ResonovaPlayer {
       `<div class="spotify-diag-row"><span class="spotify-diag-label">${label}</span><span class="spotify-diag-value${warn ? ' warn' : ''}">${value}</span></div>`;
 
     this._diagEl.innerHTML =
-      row('Paused',   d.paused) +
+      row('Paused', d.paused) +
       row('Position', d.position) +
       row('Duration', d.duration) +
-      row('Track',    d.track) +
-      row('Device ID',d.deviceId, d.deviceId === 'NO') +
-      row('Prev',     d.prevCount) +
+      row('Track', d.track) +
+      row('Device ID', d.deviceId, d.deviceId === 'NO') +
+      row('Prev', d.prevCount) +
       row('Seg type', d.segType) +
-      row('Queue',    d.queueRemaining) +
+      row('Queue', d.queueRemaining) +
       '<div class="spotify-diag-sep"></div>' +
-      row('SDK loaded',   lc.sdkLoaded ? 'yes' : 'no') +
+      row('SDK loaded', lc.sdkLoaded ? 'yes' : 'no') +
       row('Player built', lc.playerConstructed ? 'yes' : 'no') +
-      row('connect()',    lc.connectCalled ? (lc.connectResult || '...') : 'not called', !lc.connectCalled || (lc.connectCalled && !lc.connectResult)) +
-      row('ready',        lc.ready ? 'yes' : 'no', !lc.ready) +
-      row('device_id',    lc.deviceId || '-', !lc.deviceId) +
-      row('not_ready',    lc.notReady ? 'yes' : 'no') +
-      row('init_error',   lc.initError || '-', !!lc.initError) +
-      row('auth_error',   lc.authError || '-', !!lc.authError) +
-      row('acct_error',   lc.accountError ? 'yes' : 'no') +
+      row('connect()', lc.connectCalled ? (lc.connectResult || '...') : 'not called', !lc.connectCalled || (lc.connectCalled && !lc.connectResult)) +
+      row('ready', lc.ready ? 'yes' : 'no', !lc.ready) +
+      row('device_id', lc.deviceId || '-', !lc.deviceId) +
+      row('not_ready', lc.notReady ? 'yes' : 'no') +
+      row('init_error', lc.initError || '-', !!lc.initError) +
+      row('auth_error', lc.authError || '-', !!lc.authError) +
+      row('acct_error', lc.accountError ? 'yes' : 'no') +
       row('playback_err', lc.playbackError || '-', !!lc.playbackError) +
-      row('autoplay_fail',lc.autoplayFailed ? 'yes' : 'no') +
-      row('SecureCtx',    lc.isSecureContext ? 'true' : 'false', !lc.isSecureContext) +
-      row('Protocol',     lc.protocol) +
-      row('UA',           (lc.userAgent || '').slice(0, 48) + (lc.userAgent && lc.userAgent.length > 48 ? '...' : '')) +
+      row('autoplay_fail', lc.autoplayFailed ? 'yes' : 'no') +
+      row('SecureCtx', lc.isSecureContext ? 'true' : 'false', !lc.isSecureContext) +
+      row('Protocol', lc.protocol) +
+      row('UA', (lc.userAgent || '').slice(0, 48) + (lc.userAgent && lc.userAgent.length > 48 ? '...' : '')) +
       '<button class="spotify-diag-refresh" id="spotify-diag-refresh">Refresh State</button>';
 
     // Bind refresh button (re-bind every render since innerHTML replaces it)
@@ -1008,14 +1008,72 @@ class ResonovaPlayer {
     const date = new Date(ep.created_at).toLocaleDateString(undefined, {
       month: 'short', day: 'numeric', year: 'numeric',
     });
+    const time = new Date(ep.created_at).toLocaleTimeString(undefined, {
+      hour: '2-digit', minute: '2-digit',
+    });
+
+    const isPlaylistEpisode = ep.playlist_uri && ep.playlist_uri.startsWith('spotify:playlist:');
+
+    const runBadge = isPlaylistEpisode && ep.run_number != null
+      ? `<span class="ep-run-badge">Run #${ep.run_number}</span>`
+      : '';
+
+    const fingerprintBadge = ep.order_fingerprint
+      ? `<span class="ep-fingerprint" title="Order fingerprint">${this._esc(ep.order_fingerprint)}</span>`
+      : '';
+
+    const preview = ep.track_order_preview && ep.track_order_preview.length
+      ? `<div class="ep-preview">${ep.track_order_preview.map(s => this._esc(s)).join(' · ')}</div>`
+      : '';
+
     return `
       <div class="episode-card" data-episode-id="${ep.id}">
-        <div class="episode-card-name">${this._esc(ep.name)}</div>
-        <div class="episode-card-meta">
-          ${this._esc(ep.playlist_name)} · ${ep.track_count} tracks · ${date}
+        <div class="episode-card-main">
+          <div class="episode-card-name">${this._esc(ep.name)}</div>
+          <div class="episode-card-meta">
+            ${this._esc(ep.playlist_name)} · ${ep.track_count} tracks · ${date} ${time}
+            ${runBadge}${fingerprintBadge}
+          </div>
+          ${preview}
+        </div>
+        <div class="episode-card-actions" role="group" aria-label="Episode actions">
+          <button class="ep-btn ep-btn-play" data-action="play" data-episode-id="${ep.id}" title="Play this episode">▶ Play</button>
+          <button class="ep-btn ep-btn-rename" data-action="rename" data-episode-id="${ep.id}" title="Rename episode">✏</button>
+          <button class="ep-btn ep-btn-delete" data-action="delete" data-episode-id="${ep.id}" title="Delete episode">🗑</button>
         </div>
       </div>
     `;
+  }
+
+  async _renameEpisode(episodeId) {
+    const card = document.querySelector(`.episode-card[data-episode-id="${episodeId}"]`);
+    const currentName = card ? card.querySelector('.episode-card-name')?.textContent : '';
+    const newName = prompt('Rename episode:', currentName || '');
+    if (newName === null) return; // cancelled
+    const trimmed = newName.trim();
+    if (!trimmed) { alert('Name cannot be empty.'); return; }
+    try {
+      await this._apiFetch(`/api/episodes/${episodeId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: trimmed }),
+      });
+      await this._loadEpisodes();
+    } catch (err) {
+      this._showError('Rename failed: ' + err.message);
+    }
+  }
+
+  async _deleteEpisode(episodeId) {
+    const card = document.querySelector(`.episode-card[data-episode-id="${episodeId}"]`);
+    const name = card ? card.querySelector('.episode-card-name')?.textContent : 'this episode';
+    if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
+    try {
+      await this._apiFetch(`/api/episodes/${episodeId}`, { method: 'DELETE' });
+      await this._loadEpisodes();
+    } catch (err) {
+      this._showError('Delete failed: ' + err.message);
+    }
   }
 
   async _playEpisode(episodeId) {
@@ -1116,7 +1174,7 @@ class ResonovaPlayer {
   }
 
   _setNowPlaying(title, artist) {
-    document.getElementById('now-playing-title').textContent  = title;
+    document.getElementById('now-playing-title').textContent = title;
     document.getElementById('now-playing-artist').textContent = artist;
 
     const titleEl = document.getElementById('now-playing-title');
@@ -1390,11 +1448,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Playlist card clicks (delegated — covers recent, featured, and library)
   document.getElementById('state-connected').addEventListener('click', (e) => {
+    // Episode action buttons (play, rename, delete) — check before general card click
+    const actionBtn = e.target.closest('[data-action]');
+    if (actionBtn) {
+      e.stopPropagation();
+      const action = actionBtn.dataset.action;
+      const id = actionBtn.dataset.episodeId;
+      if (action === 'play') resonova._playEpisode(id);
+      else if (action === 'rename') resonova._renameEpisode(id);
+      else if (action === 'delete') resonova._deleteEpisode(id);
+      return;
+    }
+
+    // Clicking anywhere else on an episode card plays it (but not inside action area)
     const episodeCard = e.target.closest('.episode-card');
-    if (episodeCard) {
+    if (episodeCard && !e.target.closest('.episode-card-actions')) {
       resonova._playEpisode(episodeCard.dataset.episodeId);
       return;
     }
+
     const card = e.target.closest('.playlist-card');
     if (card) {
       resonova._handlePlaylistClick(card.dataset.uri);
