@@ -17,6 +17,7 @@ const STEP_MAP = {
 class ResonovaPlayer {
   constructor() {
     this.queue               = [];
+    this.playedItems         = [];
     this.totalItems          = 0;
     this.completedItems      = 0;
     this.deviceId            = null;
@@ -335,6 +336,7 @@ class ResonovaPlayer {
 
   _startPlayback(queue) {
     this.queue          = [...queue];
+    this.playedItems    = [];
     this.totalItems     = queue.length;
     this.completedItems = 0;
     this._showState('playing');
@@ -345,6 +347,11 @@ class ResonovaPlayer {
   }
 
   _playNext() {
+    if (this.currentItem) {
+      this.playedItems.push(this.currentItem);
+      this.currentItem = null;
+    }
+
     if (this.queue.length === 0) {
       if (!this._generationComplete) {
         // More tracks are still being synthesized — poll until they arrive
@@ -602,6 +609,7 @@ class ResonovaPlayer {
     this._setNowPlaying('Episode Complete', '');
     this._setSegmentType('');
     document.getElementById('next-up').textContent = 'Thanks for listening.';
+    this._updateSkipButton();
   }
 
   // ──────────────────────────────────────────────
@@ -772,6 +780,8 @@ class ResonovaPlayer {
     const blocked = this.queue.length === 0 && !this._generationComplete;
     const btn = document.getElementById('skip-btn');
     btn.disabled = blocked;
+    const prevBtn = document.getElementById('prev-btn');
+    if (prevBtn) prevBtn.disabled = !this.currentItem || this.playedItems.length === 0;
   }
 
   _updateProgressStep(step, message) {
@@ -861,6 +871,32 @@ class ResonovaPlayer {
         this._playNext();
       }
     }
+  }
+
+  previous() {
+    if (!this.currentItem || this.playedItems.length === 0) return;
+
+    if (this._segmentDeadline) {
+      clearTimeout(this._segmentDeadline);
+      this._segmentDeadline = null;
+    }
+
+    if (this.currentItem.type === 'audio') {
+      this._crossfadeTriggered = true;
+      this.audioEl.ontimeupdate = null;
+      this.audioEl.onended = null;
+      this.audioEl.pause();
+    } else if (this.currentItem.type === 'spotify') {
+      this.spotifyPlayer?.pause();
+    }
+
+    const previousItem = this.playedItems.pop();
+    this.queue.unshift(this.currentItem);
+    this.currentItem = null;
+    this.completedItems = Math.max(0, this.completedItems - 2);
+    this.queue.unshift(previousItem);
+    this._trackEndFired = false;
+    this._playNext();
   }
 
   // Ramp HTML audio element volume from → to over durationMs
@@ -965,6 +1001,10 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Skip button
+  document.getElementById('prev-btn').addEventListener('click', () => {
+    resonova.previous();
+  });
+
   document.getElementById('skip-btn').addEventListener('click', () => {
     resonova.skip();
   });
