@@ -6,6 +6,12 @@ Do not rush another large playback patch. HTTPS fixed the main mobile Spotify SD
 
 Update, 2026-06-19: the owner reproduced a production issue where phone idle/lockscreen playback stops after a while and does not continue. This moves mobile playback hardening from "parked unless reproduced" to "active next implementation candidate."
 
+Update, 2026-06-20: owner retested after the bounded hardening patch and the lockscreen transition problem still persists. The owner also observed that `auth_error` is a separate problem from transition: auth can fail after idle, but active-screen segment transition can still work. This changes the conclusion:
+
+- Token/auth failure should be handled as a user-recoverability issue.
+- Lockscreen segment transition is constrained by mobile browser page suspension. If JavaScript timers and Spotify SDK events are frozen while the screen is locked, `setTimeout` and `player_state_changed` cannot reliably advance the queue until the page resumes.
+- Do not keep adding background timer patches expecting true locked-screen continuity in the browser architecture.
+
 Next implementation should be small, reversible, and assigned to RUG with strict file limits.
 
 ## Immediate Improvement
@@ -65,11 +71,20 @@ Boss report:
 When the phone is idle or lockscreen a while, playback stops and does not continue.
 ```
 
+Retest result after `7ab5614 Harden mobile lockscreen playback`:
+
+```text
+Lockscreen transition still persists.
+auth_error appears to be a separate idle/resume problem.
+Active-screen transition is not blocked by the auth_error symptom.
+```
+
 Likely target set:
 
-1. Token callback fallback.
-2. Fade-step cap.
-3. Carefully bounded Spotify segment deadline only if the implementation can prove it is tied to the current item.
+1. Resume-state persistence so an auth failure or reload does not force starting from the beginning.
+2. Foreground resume reconciliation on `visibilitychange` / `pageshow`: when the page returns, inspect current state and advance or prompt the owner.
+3. Media Session and in-app transport controls for user-driven next/previous/play/pause.
+4. Architecture decision for true locked-screen continuity, because browser JS may not run while locked.
 
 Do not implement a general retry loop, polling monitor, or broad lifecycle state machine.
 
