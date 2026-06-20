@@ -1011,6 +1011,7 @@ class ResonovaPlayer {
       this._setNowPlaying(cached.name, cached.artist);
       item.name = cached.name;
       item.artist = cached.artist;
+      item.duration_ms = cached.duration_ms;
       document.getElementById('next-up').textContent = '';
     } else {
       try {
@@ -1024,7 +1025,12 @@ class ResonovaPlayer {
           this._setNowPlaying(trackData.name, artist);
           item.name = trackData.name;
           item.artist = artist;
-          this._cacheSet(item.uri, { name: trackData.name, artist });
+          item.duration_ms = trackData.duration_ms;
+          this._cacheSet(item.uri, {
+            name: trackData.name,
+            artist,
+            duration_ms: trackData.duration_ms,
+          });
           document.getElementById('next-up').textContent = '';
         }
       } catch (_) { }
@@ -1037,13 +1043,12 @@ class ResonovaPlayer {
         await this._sendSpotifyPlayCommand(token, item.uri);
         const started = await this._waitForSpotifyPlaybackStart(item.uri);
         if (!started) {
-          const err = new Error('Spotify SDK did not report playback after play command');
-          err.code = 'spotify_no_state';
-          throw err;
+          console.warn('[Resonova] Spotify play command succeeded but SDK state is blank; continuing in blind playback mode.');
+          this._setBlindSpotifyDeadline(item);
         }
       } catch (err) {
-        if (err.status !== 404 && err.code !== 'spotify_no_state') throw err;
-        console.warn('[Resonova] Spotify device failed to start playback; rebuilding SDK session once and retrying.', err);
+        if (err.status !== 404) throw err;
+        console.warn('[Resonova] Spotify device returned 404; rebuilding SDK session once and retrying.', err);
         this._markSpotifyUnhealthy('not_ready', err.message || 'Spotify device did not start playback');
         this._discardSpotifyDevice(err.message || 'playback did not start');
         const recovered = await this._recoverSpotifySession();
@@ -1052,9 +1057,8 @@ class ResonovaPlayer {
         await this._sendSpotifyPlayCommand(freshToken, item.uri);
         const retryStarted = await this._waitForSpotifyPlaybackStart(item.uri, 5000);
         if (!retryStarted) {
-          const retryErr = new Error('Spotify SDK still did not report playback after recovery');
-          retryErr.code = 'spotify_no_state';
-          throw retryErr;
+          console.warn('[Resonova] Spotify retry command succeeded but SDK state is still blank; continuing in blind playback mode.');
+          this._setBlindSpotifyDeadline(item);
         }
       }
       this._setMediaSessionPlaybackState('playing');
@@ -1067,6 +1071,20 @@ class ResonovaPlayer {
       document.getElementById('waveform').classList.remove('spotify-mode');
       document.getElementById('progress-fill').classList.remove('spotify-mode');
     }
+  }
+
+  _setBlindSpotifyDeadline(item) {
+    if (this._segmentDeadline || !item?.duration_ms) return;
+    const sentinel = item;
+    const deadlineMs = Math.max(3000, item.duration_ms + 3000);
+    this._segmentDeadline = setTimeout(() => {
+      if (this.currentItem === sentinel && !this._trackEndFired) {
+        console.log('[Resonova] Blind Spotify deadline fired; forcing advance');
+        this._trackEndFired = true;
+        this._fadeSpotifyVolume(_SPOTIFY_VOLUME, 0, _CROSSFADE_MS).then(() => this._playNext());
+      }
+      this._segmentDeadline = null;
+    }, deadlineMs);
   }
 
   _handleSpotifyStateChange(state) {
