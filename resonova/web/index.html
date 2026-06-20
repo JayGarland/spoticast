@@ -162,9 +162,20 @@
 
       <div class="error-msg" id="error-msg"></div>
 
-      <button class="now-playing-return" id="return-to-player-btn" type="button" style="display:none">
-        Return to Player
-      </button>
+      <!-- Now-playing mini panel — shown in library while playback is active -->
+      <div class="now-playing-trail" id="now-playing-trail" role="region" aria-label="Now playing" style="display:none">
+        <div class="npt-info">
+          <span class="npt-type" id="npt-type"></span>
+          <div class="npt-track">
+            <span class="npt-title" id="npt-title"></span>
+            <span class="npt-artist" id="npt-artist"></span>
+          </div>
+          <span class="npt-progress" id="npt-progress"></span>
+        </div>
+        <button class="npt-return-btn" id="return-to-player-btn" type="button" aria-label="Return to player">
+          ▶ Return to Player
+        </button>
+      </div>
 
       <!-- Past episodes -->
       <div class="library-section" id="section-episodes">
@@ -303,19 +314,26 @@
 
       <!-- Playback controls -->
       <div class="playback-controls">
-        <button class="skip-btn" id="prev-btn" title="No previous segment yet" aria-disabled="true">
+        <button class="skip-btn" id="prev-btn" title="No previous segment yet" aria-label="Previous segment" aria-disabled="true">
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
             <rect x="3.5" y="4" width="2.5" height="12" rx="1" fill="currentColor"/>
             <path d="M16 4l-8 6 8 6V4z" fill="currentColor"/>
           </svg>
           Previous
         </button>
-        <button class="skip-btn" id="skip-btn" title="Skip to next segment">
+        <button class="skip-btn" id="play-pause-btn" title="Pause" aria-label="Pause" disabled>
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <rect x="5" y="4" width="3.5" height="12" rx="1" fill="currentColor"/>
+            <rect x="11.5" y="4" width="3.5" height="12" rx="1" fill="currentColor"/>
+          </svg>
+          Pause
+        </button>
+        <button class="skip-btn" id="skip-btn" title="Next segment" aria-label="Next segment">
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
             <path d="M4 4l8 6-8 6V4z" fill="currentColor"/>
             <rect x="14" y="4" width="2.5" height="12" rx="1" fill="currentColor"/>
           </svg>
-          Skip
+          Next
         </button>
         <button class="skip-btn" id="recover-spotify-btn" style="display: none;">
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
@@ -348,7 +366,7 @@
   <!-- Hidden audio element for commentary playback -->
   <audio id="resonova-audio" preload="auto"></audio>
 
-  <script src="/web/player.js?v=20260620-spotify-recovery"></script>
+  <script src="/web/player.js?v=20260620-now-playing-trail"></script>
 
 </body>
 </html>

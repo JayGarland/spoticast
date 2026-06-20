@@ -929,6 +929,109 @@ body::after {
   background: rgba(108, 99, 255, 0.18);
 }
 
+/* ── Now-playing mini panel (library trail) ── */
+.now-playing-trail {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.85rem;
+  border: 1px solid var(--accent-mid);
+  border-radius: 4px;
+  background: var(--accent-low);
+  margin-top: 0.25rem;
+}
+
+.npt-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.npt-type {
+  font-family: var(--font-mono);
+  font-size: 0.48rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--cream-faint);
+}
+
+.npt-type.npt-type--commentary { color: var(--accent); }
+.npt-type.npt-type--spotify { color: var(--green); }
+.npt-type.npt-type--paused { color: var(--cream-low); }
+.npt-type.npt-type--recover { color: var(--on-air); }
+
+.npt-track {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.npt-title {
+  font-family: var(--font-disp);
+  font-size: 0.88rem;
+  font-weight: 400;
+  color: var(--cream);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
+}
+
+.npt-artist {
+  font-family: var(--font-mono);
+  font-size: 0.52rem;
+  color: var(--cream-low);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.npt-progress {
+  font-family: var(--font-mono);
+  font-size: 0.46rem;
+  color: var(--cream-faint);
+  letter-spacing: 0.06em;
+}
+
+.npt-return-btn {
+  flex-shrink: 0;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid var(--accent-mid);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--cream-mid);
+  font-family: var(--font-mono);
+  font-size: 0.52rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+  white-space: nowrap;
+}
+
+.npt-return-btn:hover {
+  border-color: var(--accent);
+  color: var(--cream);
+}
+
+@media (max-width: 480px) {
+  .now-playing-trail {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .npt-return-btn {
+    align-self: flex-end;
+  }
+}
+
 /* Playlist grid — for user playlists */
 .playlist-grid {
   display: grid;

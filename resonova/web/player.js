@@ -60,6 +60,10 @@ class ResonovaPlayer {
     this._spotifyRecoveryPromise = null;
     this._spotifyRecoveryFailed = false;
 
+    this._isPaused = false;
+    this._nowPlayingTitle = '';
+    this._nowPlayingArtist = '';
+
     // Foreground reconciliation: check Spotify state when page becomes visible
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState !== 'visible') return;
@@ -94,6 +98,7 @@ class ResonovaPlayer {
     }
     this._renderDiagnostics(null);
     this._updateRecoveryControl();
+    this._updateNowPlayingMiniPanel();
   }
 
   _clearSpotifyUnhealthy() {
@@ -104,6 +109,7 @@ class ResonovaPlayer {
     this._lifecycle.notReady = false;
     this._renderDiagnostics(null);
     this._updateRecoveryControl();
+    this._updateNowPlayingMiniPanel();
   }
 
   _waitForSpotifyDevice(timeoutMs) {
@@ -222,6 +228,133 @@ class ResonovaPlayer {
     if (success && this.currentItem && this.currentItem.type === 'spotify') {
       await this._playSpotifyTrack(this.currentItem);
     }
+  }
+
+  // ──────────────────────────────────────────────
+  // Play / Pause / Resume
+  // ──────────────────────────────────────────────
+
+  pause() {
+    if (!this.currentItem || this._isPaused) return;
+    if (this.currentItem.type === 'audio') {
+      this.audioEl.pause();
+    } else if (this.currentItem.type === 'spotify') {
+      if (this._segmentDeadline) {
+        clearTimeout(this._segmentDeadline);
+        this._segmentDeadline = null;
+      }
+      try { this.spotifyPlayer?.pause(); } catch (_) {}
+    }
+    this._isPaused = true;
+    document.getElementById('waveform')?.classList.add('paused');
+    this._updatePlayPauseButton();
+    this._setMediaSessionPlaybackState('paused');
+    this._updateNowPlayingMiniPanel();
+  }
+
+  resume() {
+    if (!this.currentItem || !this._isPaused) return;
+    if (this.currentItem.type === 'audio') {
+      this.audioEl.play()
+        .then(() => {
+          this._isPaused = false;
+          document.getElementById('waveform')?.classList.remove('paused');
+          this._updatePlayPauseButton();
+          this._setMediaSessionPlaybackState('playing');
+          this._updateNowPlayingMiniPanel();
+        })
+        .catch(err => {
+          console.error('[Resonova] Audio resume failed:', err);
+        });
+      return;
+    } else if (this.currentItem.type === 'spotify') {
+      if (!this._isSpotifyHealthy()) {
+        this._recoverSpotifySession().then(success => {
+          if (success) {
+            try { this.spotifyPlayer?.resume(); } catch (_) {}
+            this._isPaused = false;
+            document.getElementById('waveform')?.classList.remove('paused');
+            this._updatePlayPauseButton();
+            this._setMediaSessionPlaybackState('playing');
+            this._updateNowPlayingMiniPanel();
+          }
+        });
+        return;
+      }
+      try { this.spotifyPlayer?.resume(); } catch (_) {}
+    }
+    this._isPaused = false;
+    document.getElementById('waveform')?.classList.remove('paused');
+    this._updatePlayPauseButton();
+    this._setMediaSessionPlaybackState('playing');
+    this._updateNowPlayingMiniPanel();
+  }
+
+  togglePlayPause() {
+    if (this._isPaused) {
+      this.resume();
+    } else {
+      this.pause();
+    }
+  }
+
+  _updatePlayPauseButton() {
+    const btn = document.getElementById('play-pause-btn');
+    if (!btn) return;
+    btn.disabled = !this.currentItem;
+    if (this._isPaused) {
+      btn.setAttribute('aria-label', 'Resume');
+      btn.title = 'Resume';
+      btn.innerHTML = `
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path d="M5 4l10 6-10 6V4z" fill="currentColor"/>
+        </svg>
+        Resume
+      `;
+    } else {
+      btn.setAttribute('aria-label', 'Pause');
+      btn.title = 'Pause';
+      btn.innerHTML = `
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <rect x="5" y="4" width="3.5" height="12" rx="1" fill="currentColor"/>
+          <rect x="11.5" y="4" width="3.5" height="12" rx="1" fill="currentColor"/>
+        </svg>
+        Pause
+      `;
+    }
+  }
+
+  // ──────────────────────────────────────────────
+  // Media Session API
+  // ──────────────────────────────────────────────
+
+  _initMediaSessionHandlers() {
+    if (!('mediaSession' in navigator)) return;
+    const safe = (action, handler) => {
+      try { navigator.mediaSession.setActionHandler(action, handler); } catch (_) {}
+    };
+    safe('play', () => this.resume());
+    safe('pause', () => this.pause());
+    safe('nexttrack', () => this.skip());
+    safe('previoustrack', () => this.previous());
+  }
+
+  _updateMediaSession(title, artist) {
+    if (!('mediaSession' in navigator)) return;
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: title || 'Resonova',
+        artist: artist || '',
+        album: 'Resonova',
+      });
+    } catch (_) {}
+  }
+
+  _setMediaSessionPlaybackState(state) {
+    if (!('mediaSession' in navigator)) return;
+    try {
+      navigator.mediaSession.playbackState = state;
+    } catch (_) {}
   }
 
   _createDiagToggle() {
@@ -408,6 +541,7 @@ class ResonovaPlayer {
     this._loadLibrary();
     this._initLastFM();
     this._initHistoryNav();
+    this._initMediaSessionHandlers();
 
     // Check for unfinished episode
     if (!this._resumeChecked) {
@@ -701,11 +835,13 @@ class ResonovaPlayer {
     this.currentIndex = -1;
     this.totalItems = queue.length;
     this.completedItems = 0;
+    this._isPaused = false;
     this._pushHistoryState('playing');
     this._showState('playing');
     document.getElementById('on-air-badge').classList.add('active');
     this._renderDiagnostics(null);
     this._updateSkipButton();
+    this._updatePlayPauseButton();
     this._playNext();
     this._saveResumeState();
   }
@@ -754,6 +890,8 @@ class ResonovaPlayer {
   }
 
   _playAudio(item) {
+    this._isPaused = false;
+    this._updatePlayPauseButton();
     this._setSegmentType('commentary');
     this._setNowPlaying('AI Commentary', 'Podcast Intro');
 
@@ -790,13 +928,17 @@ class ResonovaPlayer {
       this._playNext();
     };
 
-    this.audioEl.play().catch(err => {
-      console.error('Audio play failed:', err);
-      this._playNext();
-    });
+    this.audioEl.play()
+      .then(() => this._setMediaSessionPlaybackState('playing'))
+      .catch(err => {
+        console.error('Audio play failed:', err);
+        this._playNext();
+      });
   }
 
   async _playSpotifyTrack(item) {
+    this._isPaused = false;
+    this._updatePlayPauseButton();
     this._setSegmentType('spotify');
 
     document.getElementById('waveform').classList.add('spotify-mode');
@@ -856,6 +998,7 @@ class ResonovaPlayer {
       if (!res.ok) {
         throw new Error(`Device playback endpoint returned ${res.status}`);
       }
+      this._setMediaSessionPlaybackState('playing');
     } catch (err) {
       console.error('Spotify play failed:', err);
       this._markSpotifyUnhealthy('playback_error', err.message || 'Direct play command failed');
@@ -883,7 +1026,7 @@ class ResonovaPlayer {
 
     // Set a one-shot deadline: if player_state_changed never fires again
     // (mobile background/lockscreen), force-advance after remaining duration.
-    if (state.duration > 0 && !this._segmentDeadline) {
+    if (state.duration > 0 && !state.paused && !this._segmentDeadline) {
       const remainingMs = Math.max(0, state.duration - (state.position || 0));
       const deadlineMs = Math.max(3000, remainingMs + 3000);
       const sentinel = this.currentItem;
@@ -1002,6 +1145,10 @@ class ResonovaPlayer {
     document.getElementById('next-up').textContent = 'Thanks for listening.';
     this._updateSkipButton();
     this._clearResumeState();
+    this._isPaused = false;
+    this._updatePlayPauseButton();
+    this._setMediaSessionPlaybackState('none');
+    this._updateNowPlayingMiniPanel();
   }
 
   // ──────────────────────────────────────────────
@@ -1234,14 +1381,55 @@ class ResonovaPlayer {
         document.getElementById('on-air-badge')?.appendChild(this._createDiagToggle());
       }
     }
-    this._updateLibraryReturnButton(name);
+    this._updateNowPlayingMiniPanel(name);
   }
 
-  _updateLibraryReturnButton(stateName = null) {
-    const btn = document.getElementById('return-to-player-btn');
-    if (!btn) return;
-    const shouldShow = stateName === 'connected' && !!this.currentItem;
-    btn.style.display = shouldShow ? '' : 'none';
+  _updateNowPlayingMiniPanel(stateName = null) {
+    const trail = document.getElementById('now-playing-trail');
+    if (!trail) return;
+
+    // Determine effective state: use passed name if available, else read DOM
+    const inLibrary = stateName !== null
+      ? stateName === 'connected'
+      : document.getElementById('state-connected')?.classList.contains('active');
+
+    if (!inLibrary || !this.currentItem) {
+      trail.style.display = 'none';
+      return;
+    }
+
+    // Determine segment type label
+    let typeLabel = '';
+    let typeClass = '';
+    if (this._spotifyRecoveryFailed || this._spotifyUnhealthy) {
+      typeLabel = 'Recover needed';
+      typeClass = 'npt-type--recover';
+    } else if (this._isPaused) {
+      typeLabel = 'Paused';
+      typeClass = 'npt-type--paused';
+    } else if (this._segmentType === 'commentary') {
+      typeLabel = 'AI Commentary';
+      typeClass = 'npt-type--commentary';
+    } else if (this._segmentType === 'spotify') {
+      typeLabel = 'Spotify';
+      typeClass = 'npt-type--spotify';
+    }
+
+    const typeEl = document.getElementById('npt-type');
+    const titleEl = document.getElementById('npt-title');
+    const artistEl = document.getElementById('npt-artist');
+    const progressEl = document.getElementById('npt-progress');
+
+    if (typeEl) { typeEl.textContent = typeLabel; typeEl.className = 'npt-type ' + typeClass; }
+    if (titleEl) titleEl.textContent = this._nowPlayingTitle || '';
+    if (artistEl) artistEl.textContent = this._nowPlayingArtist || '';
+    if (progressEl) {
+      progressEl.textContent = this.totalItems > 0
+        ? `${this.completedItems} / ${this.totalItems} segments`
+        : '';
+    }
+
+    trail.style.display = '';
   }
 
   _showError(msg) {
@@ -1252,6 +1440,8 @@ class ResonovaPlayer {
   }
 
   _setNowPlaying(title, artist) {
+    this._nowPlayingTitle = title;
+    this._nowPlayingArtist = artist;
     document.getElementById('now-playing-title').textContent = title;
     document.getElementById('now-playing-artist').textContent = artist;
 
@@ -1261,6 +1451,8 @@ class ResonovaPlayer {
     } else {
       titleEl.classList.remove('italic');
     }
+    this._updateMediaSession(title, artist);
+    this._updateNowPlayingMiniPanel();
   }
 
   _setSegmentType(type) {
@@ -1269,6 +1461,7 @@ class ResonovaPlayer {
     const labels = { commentary: 'AI Commentary', spotify: 'Now Playing', '': '' };
     el.querySelector('.segment-type-label').textContent = labels[type] ?? '';
     this._segmentType = type;
+    this._updateNowPlayingMiniPanel();
   }
 
   _updateProgress() {
@@ -1279,6 +1472,7 @@ class ResonovaPlayer {
     const suffix = this._generationComplete ? '' : ' · generating…';
     document.getElementById('progress-label').textContent =
       `${this.completedItems} / ${this.totalItems} segments${suffix}`;
+    this._updateNowPlayingMiniPanel();
   }
 
   _updateSkipButton() {
@@ -1581,6 +1775,10 @@ document.addEventListener('DOMContentLoaded', () => {
   // Skip button
   document.getElementById('prev-btn').addEventListener('click', () => {
     resonova.previous();
+  });
+
+  document.getElementById('play-pause-btn')?.addEventListener('click', () => {
+    resonova.togglePlayPause();
   });
 
   document.getElementById('skip-btn').addEventListener('click', () => {
