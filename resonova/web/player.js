@@ -728,6 +728,26 @@ class ResonovaPlayer {
     }
   }
 
+  async _sendSpotifyPlayCommand(token, uri) {
+    const res = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${this.deviceId}`, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ uris: [uri] }),
+    });
+    if (!res.ok) {
+      let detail = '';
+      try { detail = await res.text(); } catch (_) { }
+      const err = new Error(
+        `Device playback endpoint returned ${res.status}${detail ? `: ${detail.slice(0, 180)}` : ''}`
+      );
+      err.status = res.status;
+      throw err;
+    }
+  }
+
   // ──────────────────────────────────────────────
   // Generation flow
   // ──────────────────────────────────────────────
@@ -987,16 +1007,16 @@ class ResonovaPlayer {
     try {
       // Restore full volume whenever we start a Spotify track
       await this.spotifyPlayer.setVolume(_SPOTIFY_VOLUME);
-      const res = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${this.deviceId}`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ uris: [item.uri] }),
-      });
-      if (!res.ok) {
-        throw new Error(`Device playback endpoint returned ${res.status}`);
+      try {
+        await this._sendSpotifyPlayCommand(token, item.uri);
+      } catch (err) {
+        if (err.status !== 404) throw err;
+        console.warn('[Resonova] Spotify device returned 404; rebuilding SDK session once and retrying playback.');
+        this._markSpotifyUnhealthy('not_ready', 'Device playback endpoint returned 404');
+        const recovered = await this._recoverSpotifySession();
+        if (!recovered) throw err;
+        const { token: freshToken } = await this._apiFetch('/auth/token');
+        await this._sendSpotifyPlayCommand(freshToken, item.uri);
       }
       this._setMediaSessionPlaybackState('playing');
     } catch (err) {
