@@ -26,12 +26,15 @@ class ResonovaPlayer {
     this._segmentDeadline    = null;
     this.audioEl             = document.getElementById('resonova-audio');
     this.currentItem         = null;
+    this._episodeId           = null;
+    this._segmentType         = '';
     // Prevents double-firing of playNext on track end
     this._trackEndFired      = false;
     // True once the server has finished synthesizing all tracks
     this._generationComplete = true;
     this._diagEl = null; // diagnostic overlay, lazily created
     this._diagVisible = localStorage.getItem('resonova:diag') === '1';
+    this._resumeChecked = false;
     this._lifecycle = {
       sdkLoaded: false,
       playerConstructed: false,
@@ -49,6 +52,13 @@ class ResonovaPlayer {
       protocol: location.protocol,
       userAgent: navigator.userAgent,
     };
+
+    // Foreground reconciliation: check Spotify state when page becomes visible
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') return;
+      if (!this.currentItem) return;
+      this._reconcileAfterBackground();
+    });
   }
 
   _createDiagToggle() {
@@ -67,6 +77,138 @@ class ResonovaPlayer {
     return btn;
   }
 
+  _saveResumeState() {
+    if (!this._episodeId || (!this.queue.length && !this.currentItem)) {
+      // Nothing meaningful to resume
+      localStorage.removeItem('resonova:resume');
+      return;
+    }
+    const state = {
+      episodeId: this._episodeId,
+      queue: this.queue.slice(),
+      playedItems: this.playedItems.slice(),
+      currentItem: this.currentItem ? { ...this.currentItem } : null,
+      completedItems: this.completedItems,
+      totalItems: this.totalItems,
+      segmentType: this._segmentType,
+      ts: Date.now(),
+    };
+    try {
+      localStorage.setItem('resonova:resume', JSON.stringify(state));
+    } catch { /* quota exceeded, ignore */ }
+  }
+
+  _clearResumeState() {
+    localStorage.removeItem('resonova:resume');
+  }
+
+  _checkResumeState() {
+    try {
+      const raw = localStorage.getItem('resonova:resume');
+      if (!raw) return null;
+      const state = JSON.parse(raw);
+      // Expire after 30 minutes
+      if (Date.now() - state.ts > 30 * 60 * 1000) {
+        localStorage.removeItem('resonova:resume');
+        return null;
+      }
+      return state;
+    } catch {
+      localStorage.removeItem('resonova:resume');
+      return null;
+    }
+  }
+
+  _showResumePrompt(state) {
+    // Create a resume card in the connected state
+    const container = document.getElementById('state-connected');
+    if (!container) return;
+
+    // Remove any existing resume card
+    const existing = document.getElementById('resume-card');
+    if (existing) existing.remove();
+
+    const card = document.createElement('div');
+    card.id = 'resume-card';
+    card.innerHTML = `
+        <div style="margin:1rem 0;padding:0.75rem 1rem;background:var(--panel);border:1px solid var(--accent-mid);border-radius:4px;display:flex;align-items:center;justify-content:space-between;gap:1rem;">
+            <div style="font-size:0.75rem;color:var(--cream-mid);">
+                <span style="color:var(--accent);font-weight:600;">Unfinished episode</span>
+                <span style="color:var(--cream-faint);margin-left:0.5rem;">Segment ${state.completedItems}/${state.totalItems}</span>
+            </div>
+            <button id="resume-btn" style="padding:0.35rem 0.75rem;background:var(--accent);color:#fff;border:none;border-radius:3px;font-family:var(--font-mono);font-size:0.65rem;cursor:pointer;white-space:nowrap;">Resume</button>
+            <button id="resume-dismiss" style="padding:0.35rem 0.5rem;background:transparent;border:1px solid var(--panel-border);border-radius:3px;color:var(--cream-faint);font-size:0.65rem;cursor:pointer;">✕</button>
+        </div>`;
+
+    // Insert after the header text, before the generate form
+    const header = container.querySelector('.connected-header');
+    if (header) {
+      header.after(card);
+    } else {
+      container.insertBefore(card, container.firstChild);
+    }
+
+    // Bind events
+    card.querySelector('#resume-btn').addEventListener('click', () => {
+      card.remove();
+      this._resumePlayback(state);
+    });
+    card.querySelector('#resume-dismiss').addEventListener('click', () => {
+      card.remove();
+      this._clearResumeState();
+    });
+  }
+
+  async _resumePlayback(state) {
+    this._episodeId = state.episodeId;
+
+    // Rebuild queue: currentItem first (it may have been partially played), then rest
+    const queue = state.currentItem
+      ? [state.currentItem, ...state.queue]
+      : [...state.queue];
+
+    this._startPlayback(queue);
+    this.playedItems = Array.isArray(state.playedItems) ? [...state.playedItems] : [];
+
+    // Mark completedItems as already passed (minus current item)
+    this.completedItems = Math.max(0, state.completedItems - 1);
+    this.totalItems = state.totalItems || queue.length;
+    this._segmentType = state.segmentType || '';
+    this._updateProgress();
+    this._updateSkipButton();
+    this._saveResumeState();
+  }
+
+  async _reconcileAfterBackground() {
+    // If auth_error exists but we have a resume state, don't consider it fatal
+    if (this._lifecycle.authError && this._episodeId) {
+      console.log('[Resonova] Auth error after background — resume state exists, not fatal');
+      this._saveResumeState();
+    }
+
+    // If current item is Spotify, query current state
+    if (this.currentItem?.type !== 'spotify' || !this.spotifyPlayer) return;
+
+    try {
+      const state = await this.spotifyPlayer.getCurrentState();
+      if (!state) return;
+
+      // If track appears ended (paused at start with history), advance
+      if (state.paused && state.position < 2000 && state.track_window?.previous_tracks?.length > 0) {
+        if (!this._trackEndFired) {
+          console.log('[Resonova] Track appears ended after background — advancing');
+          this._trackEndFired = true;
+          this._fadeSpotifyVolume(_SPOTIFY_VOLUME, 0, _CROSSFADE_MS).then(() => this._playNext());
+        }
+      }
+
+      // Refresh diagnostics with latest state
+      this._renderDiagnostics(state);
+    } catch {
+      // getCurrentState can fail if SDK is disconnected — not fatal
+    }
+  }
+
   // ──────────────────────────────────────────────
   // Initialisation
   // ──────────────────────────────────────────────
@@ -81,6 +223,16 @@ class ResonovaPlayer {
     this._loadSpotifySDK();
     this._loadLibrary();
     this._initLastFM();
+
+    // Check for unfinished episode
+    if (!this._resumeChecked) {
+      this._resumeChecked = true;
+      const resumeState = this._checkResumeState();
+      if (resumeState) {
+        // Delay slightly so DOM is ready
+        setTimeout(() => this._showResumePrompt(resumeState), 200);
+      }
+    }
   }
 
   // ── Last.fm widget ──────────────────────────────────────────────────────
@@ -265,6 +417,7 @@ class ResonovaPlayer {
         body: JSON.stringify(parsed),
       });
       jobId = res.job_id;
+      this._episodeId = jobId;
     } catch (err) {
       this._showState('connected');
       this._showError('Failed to start generation: ' + err.message);
@@ -300,6 +453,7 @@ class ResonovaPlayer {
       this.totalItems = 1 + total * 2;
       this._updateProgress();
       this._updateSkipButton();
+      this._saveResumeState();
     });
 
     // Outro arrives after the last track — append to the live queue
@@ -309,6 +463,7 @@ class ResonovaPlayer {
       this.totalItems += 1;
       this._updateProgress();
       this._updateSkipButton();
+      this._saveResumeState();
     });
 
     es.addEventListener('done', (_e) => {
@@ -344,6 +499,7 @@ class ResonovaPlayer {
     this._renderDiagnostics(null);
     this._updateSkipButton();
     this._playNext();
+    this._saveResumeState();
   }
 
   _playNext() {
@@ -374,6 +530,7 @@ class ResonovaPlayer {
     this._updateProgress();
     this._updateSkipButton();
     this._renderDiagnostics(null);
+    this._saveResumeState();
 
     if (item.type === 'audio') {
       this._playAudio(item);
@@ -610,6 +767,7 @@ class ResonovaPlayer {
     this._setSegmentType('');
     document.getElementById('next-up').textContent = 'Thanks for listening.';
     this._updateSkipButton();
+    this._clearResumeState();
   }
 
   // ──────────────────────────────────────────────
@@ -650,6 +808,7 @@ class ResonovaPlayer {
   }
 
   async _playEpisode(episodeId) {
+    this._episodeId = episodeId;
     try {
       const ep = await this._apiFetch(`/api/episodes/${episodeId}`);
       this._startPlayback(ep.queue);
@@ -762,6 +921,7 @@ class ResonovaPlayer {
     el.className = 'segment-type ' + (type || '');
     const labels = { commentary: 'AI Commentary', spotify: 'Now Playing', '': '' };
     el.querySelector('.segment-type-label').textContent = labels[type] ?? '';
+    this._segmentType = type;
   }
 
   _updateProgress() {
