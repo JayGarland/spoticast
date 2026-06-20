@@ -1,0 +1,29 @@
+# Resonova Agent Orientation
+
+Audience: Agents
+
+## Read First
+
+Before doing company-role, recruitment, manager, auditor, or chef-level work, read:
+
+- `docs/strategy/ai-agent-company-operating-model.md`
+- `docs/strategy/ai-agent-role-job-specs.md`
+- `docs/strategy/ai-agent-recruitment-execution-guide.md`
+
+When reviewing agent performance, also read:
+
+- `docs/strategy/agent-performance-weights-2026-06-19.md`
+
+## Operating Rules
+
+- Boss/CEO and chef hold approval authority for commits, PRs, pipelines, and accepted agent work.
+- Manager, worker, auditor, reviewer, and recruiter agents must not approve their own work.
+- Non-trivial product, architecture, budget, release, PR, or pipeline decisions require chef-boss discussion.
+- Manager-level work currently requires a work handoff.
+- Handoffs should explain what changed, what was validated, remaining risks, and what the next agent needs to know.
+- Avoid over-documenting. Prefer short decision records, job specs, briefs, and handoffs over large process manuals.
+- Commit only validated scoped work when authorized.
+
+## Default Behavior
+
+If the requested work is unclear, read the relevant strategy docs before asking questions. If the work changes authority, company roles, recruitment, quality process, or delivery risk, treat it as non-trivial and escalate to boss/chef discussion.
