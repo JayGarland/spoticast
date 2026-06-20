@@ -307,6 +307,14 @@
           </svg>
           Skip
         </button>
+        <button class="skip-btn" id="recover-spotify-btn" style="display: none;">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <!-- Use a suitable svg icon for recovery, e.g. a reload/refresh circle -->
+            <path d="M10 3a7 7 0 0 0-7 7h2a5 5 0 1 1 5 5v2a7 7 0 0 0 0-14z" fill="currentColor"/>
+            <path d="M1.5 10l2.5-3 2.5 3h-5z" fill="currentColor"/>
+          </svg>
+          Recover Spotify
+        </button>
       </div>
 
       <!-- Episode progress bar -->
@@ -330,7 +338,7 @@
   <!-- Hidden audio element for commentary playback -->
   <audio id="resonova-audio" preload="auto"></audio>
 
-  <script src="/web/player.js?v=20260620-previous-control"></script>
+  <script src="/web/player.js?v=20260620-spotify-recovery"></script>
 
 </body>
 </html>

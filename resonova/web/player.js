@@ -55,12 +55,173 @@ class ResonovaPlayer {
       userAgent: navigator.userAgent,
     };
 
+    this._spotifyUnhealthy = false;
+    this._spotifyRecovering = false;
+    this._spotifyRecoveryPromise = null;
+    this._spotifyRecoveryFailed = false;
+
     // Foreground reconciliation: check Spotify state when page becomes visible
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState !== 'visible') return;
       if (!this.currentItem) return;
       this._reconcileAfterBackground();
     });
+  }
+
+  _isSpotifyHealthy() {
+    return !!this.spotifyPlayer &&
+      !!this.deviceId &&
+      !this._lifecycle.authError &&
+      !this._lifecycle.playbackError &&
+      !this._lifecycle.notReady &&
+      !this._spotifyUnhealthy;
+  }
+
+  _markSpotifyUnhealthy(reason, message) {
+    this._spotifyUnhealthy = true;
+    this._spotifyRecoveryFailed = false;
+    if (reason === 'auth' || reason === 'authentication_error') {
+      this._lifecycle.authError = message || 'authentication_error';
+    }
+    if (reason === 'playback' || reason === 'playback_error') {
+      this._lifecycle.playbackError = message || 'playback_error';
+    }
+    if (reason === 'not_ready') {
+      this.deviceId = null;
+      this._lifecycle.ready = false;
+      this._lifecycle.deviceId = null;
+      this._lifecycle.notReady = message || true;
+    }
+    this._renderDiagnostics(null);
+    this._updateRecoveryControl();
+  }
+
+  _clearSpotifyUnhealthy() {
+    this._spotifyUnhealthy = false;
+    this._spotifyRecoveryFailed = false;
+    this._lifecycle.authError = null;
+    this._lifecycle.playbackError = null;
+    this._lifecycle.notReady = false;
+    this._renderDiagnostics(null);
+    this._updateRecoveryControl();
+  }
+
+  _waitForSpotifyDevice(timeoutMs) {
+    if (this.deviceId) return Promise.resolve(this.deviceId);
+    return new Promise(resolve => {
+      const started = Date.now();
+      const id = setInterval(() => {
+        if (this.deviceId) {
+          clearInterval(id);
+          resolve(this.deviceId);
+        } else if (Date.now() - started >= timeoutMs) {
+          clearInterval(id);
+          resolve(null);
+        }
+      }, 100);
+    });
+  }
+
+  async _recoverSpotifySession() {
+    if (this._spotifyRecovering) return this._spotifyRecoveryPromise;
+
+    this._spotifyRecovering = true;
+    this._spotifyRecoveryFailed = false;
+    this._updateRecoveryControl();
+
+    this._spotifyRecoveryPromise = (async () => {
+      try {
+        const { token } = await this._apiFetch('/auth/token');
+        if (!token) throw new Error('No Spotify token');
+        this._cachedToken = token;
+
+        // First try to reconnect existing player.
+        if (this.spotifyPlayer) {
+          try { await this.spotifyPlayer.connect(); } catch (_) {}
+        }
+
+        let deviceId = await this._waitForSpotifyDevice(3000);
+
+        // If reconnect did not produce a device, rebuild once.
+        if (!deviceId) {
+          try { this.spotifyPlayer?.disconnect(); } catch (_) {}
+          this.spotifyPlayer = null;
+          this.deviceId = null;
+          this._lifecycle.ready = false;
+          this._lifecycle.deviceId = null;
+          await this._initSpotifyPlayer();
+          deviceId = await this._waitForSpotifyDevice(5000);
+        }
+
+        if (!deviceId) throw new Error('Spotify device did not become ready');
+
+        await this._transferPlayback(deviceId, token);
+
+        this._spotifyUnhealthy = false;
+        this._spotifyRecoveryFailed = false;
+        this._lifecycle.authError = null;
+        this._lifecycle.playbackError = null;
+        this._lifecycle.notReady = false;
+        this._lifecycle.ready = true;
+        this._lifecycle.deviceId = deviceId;
+        this._renderDiagnostics(null);
+        return true;
+      } catch (err) {
+        console.warn('[Resonova] Spotify recovery failed:', err);
+        this._spotifyRecoveryFailed = true;
+        this._renderDiagnostics(null);
+        return false;
+      } finally {
+        this._spotifyRecovering = false;
+        this._spotifyRecoveryPromise = null;
+        this._updateRecoveryControl();
+      }
+    })();
+
+    return this._spotifyRecoveryPromise;
+  }
+
+  _updateRecoveryControl() {
+    const btn = document.getElementById('recover-spotify-btn');
+    if (!btn) return;
+
+    // Wire listener once
+    if (!btn._wired) {
+      btn.addEventListener('click', () => {
+        this.recoverSpotify();
+      });
+      btn._wired = true;
+    }
+
+    const isVisible = this._spotifyUnhealthy || this._spotifyRecoveryFailed;
+    btn.style.display = isVisible ? '' : 'none';
+
+    if (this._spotifyRecovering) {
+      btn.disabled = true;
+      btn.innerHTML = `
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path d="M10 3a7 7 0 0 0-7 7h2a5 5 0 1 1 5 5v2a7 7 0 0 0 0-14z" fill="currentColor"/>
+          <path d="M1.5 10l2.5-3 2.5 3h-5z" fill="currentColor"/>
+        </svg>
+        Recovering...
+      `;
+    } else {
+      btn.disabled = false;
+      btn.innerHTML = `
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path d="M10 3a7 7 0 0 0-7 7h2a5 5 0 1 1 5 5v2a7 7 0 0 0 0-14z" fill="currentColor"/>
+          <path d="M1.5 10l2.5-3 2.5 3h-5z" fill="currentColor"/>
+        </svg>
+        Recover Spotify
+      `;
+    }
+  }
+
+  async recoverSpotify() {
+    const success = await this._recoverSpotifySession();
+    if (success && this.currentItem && this.currentItem.type === 'spotify') {
+      await this._playSpotifyTrack(this.currentItem);
+    }
   }
 
   _createDiagToggle() {
@@ -189,6 +350,18 @@ class ResonovaPlayer {
   }
 
   async _reconcileAfterBackground() {
+    if (this.currentItem?.type === 'spotify' && !this._isSpotifyHealthy()) {
+      console.log('[Resonova] Spotify is unhealthy on foreground return, triggering recovery...');
+      const success = await this._recoverSpotifySession();
+      if (success) {
+        console.log('[Resonova] Spotify recovery succeeded on foreground return, retrying playback...');
+        await this._playSpotifyTrack(this.currentItem);
+      } else {
+        console.warn('[Resonova] Spotify recovery failed on foreground return.');
+      }
+      return;
+    }
+
     // If auth_error exists but we have a resume state, don't consider it fatal
     if (this._lifecycle.authError && this._episodeId) {
       console.log('[Resonova] Auth error after background — resume state exists, not fatal');
@@ -331,14 +504,12 @@ class ResonovaPlayer {
       this.deviceId = device_id;
       this._lifecycle.ready = true;
       this._lifecycle.deviceId = device_id;
-      this._renderDiagnostics(null);
+      this._clearSpotifyUnhealthy();
       this._transferPlayback(device_id, token);
     });
 
     this.spotifyPlayer.addListener('not_ready', () => {
-      this.deviceId = null;
-      this._lifecycle.notReady = true;
-      this._renderDiagnostics(null);
+      this._markSpotifyUnhealthy('not_ready', 'Device was marked not ready');
     });
 
     this.spotifyPlayer.addListener('initialization_error', ({ message }) => {
@@ -349,9 +520,7 @@ class ResonovaPlayer {
     });
 
     this.spotifyPlayer.addListener('authentication_error', ({ message }) => {
-      console.error('Spotify auth error:', message);
-      this._lifecycle.authError = message;
-      this._renderDiagnostics(null);
+      this._markSpotifyUnhealthy('authentication_error', message);
     });
 
     this.spotifyPlayer.addListener('account_error', (e) => {
@@ -361,8 +530,7 @@ class ResonovaPlayer {
     });
 
     this.spotifyPlayer.addListener('playback_error', ({ message }) => {
-      this._lifecycle.playbackError = message;
-      this._renderDiagnostics(null);
+      this._markSpotifyUnhealthy('playback_error', message);
     });
 
     this.spotifyPlayer.addListener('autoplay_failed', () => {
@@ -612,6 +780,18 @@ class ResonovaPlayer {
     document.getElementById('waveform').classList.remove('paused');
     document.getElementById('progress-fill').classList.add('spotify-mode');
 
+    if (!this._isSpotifyHealthy()) {
+      console.warn('Spotify unhealthy. Triggering automatic single recovery...');
+      const recovered = await this._recoverSpotifySession();
+      if (!recovered) {
+        console.error('Spotify recovery failed. Halting playback.');
+        this._setNowPlaying('(Spotify connection lost. Click Recover below.)', '');
+        document.getElementById('waveform').classList.remove('spotify-mode');
+        document.getElementById('progress-fill').classList.remove('spotify-mode');
+        return;
+      }
+    }
+
     const { token } = await this._apiFetch('/auth/token');
 
     // Fetch track info — check cache first
@@ -642,7 +822,7 @@ class ResonovaPlayer {
     try {
       // Restore full volume whenever we start a Spotify track
       await this.spotifyPlayer.setVolume(_SPOTIFY_VOLUME);
-      await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${this.deviceId}`, {
+      const res = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${this.deviceId}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -650,9 +830,17 @@ class ResonovaPlayer {
         },
         body: JSON.stringify({ uris: [item.uri] }),
       });
+      if (!res.ok) {
+        throw new Error(`Device playback endpoint returned ${res.status}`);
+      }
     } catch (err) {
       console.error('Spotify play failed:', err);
-      this._playNext();
+      this._markSpotifyUnhealthy('playback_error', err.message || 'Direct play command failed');
+      this._spotifyRecoveryFailed = true;
+      this._updateRecoveryControl();
+      this._setNowPlaying('(Spotify playback failed. Click Recover below.)', '');
+      document.getElementById('waveform').classList.remove('spotify-mode');
+      document.getElementById('progress-fill').classList.remove('spotify-mode');
     }
   }
 
@@ -1064,8 +1252,28 @@ class ResonovaPlayer {
     }
   }
 
-  previous() {
+  async previous() {
     if (!this._hasPreviousSegment()) return;
+
+    const fallbackItem = this.playedItems[this.playedItems.length - 1];
+    let previousIndex = this.currentIndex > 0
+      ? this.currentIndex - 1
+      : this.playbackTimeline.indexOf(fallbackItem);
+    const previousItem = previousIndex >= 0
+      ? this.playbackTimeline[previousIndex]
+      : fallbackItem;
+    if (!previousItem) return;
+
+    if (previousItem.type === 'spotify' && !this._isSpotifyHealthy()) {
+      console.warn('[Resonova] Spotify recovery triggered due to unhealthy state before previous navigation.');
+      const success = await this._recoverSpotifySession();
+      if (!success) {
+        console.error('[Resonova] Spotify recovery failed during previous navigation.');
+        this._spotifyRecoveryFailed = true;
+        this._updateRecoveryControl();
+        return;
+      }
+    }
 
     if (this._segmentDeadline) {
       clearTimeout(this._segmentDeadline);
@@ -1080,15 +1288,6 @@ class ResonovaPlayer {
     } else if (this.currentItem.type === 'spotify') {
       this.spotifyPlayer?.pause();
     }
-
-    const fallbackItem = this.playedItems[this.playedItems.length - 1];
-    let previousIndex = this.currentIndex > 0
-      ? this.currentIndex - 1
-      : this.playbackTimeline.indexOf(fallbackItem);
-    const previousItem = previousIndex >= 0
-      ? this.playbackTimeline[previousIndex]
-      : fallbackItem;
-    if (!previousItem) return;
 
     this.playedItems.pop();
     this.queue = previousIndex >= 0
@@ -1210,6 +1409,13 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('skip-btn').addEventListener('click', () => {
     resonova.skip();
   });
+
+  const recoverBtn = document.getElementById('recover-spotify-btn');
+  if (recoverBtn) {
+    recoverBtn.addEventListener('click', () => {
+      resonova.recoverSpotify();
+    });
+  }
 
   // Load more playlists
   document.getElementById('load-more-playlists').addEventListener('click', () => {

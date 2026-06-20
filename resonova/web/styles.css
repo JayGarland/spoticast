@@ -865,6 +865,7 @@ body::after {
 .playback-controls {
   display: flex;
   justify-content: center;
+  flex-wrap: wrap;
   gap: 1rem;
   width: 100%;
   margin: 0.5rem 0;
@@ -895,6 +896,15 @@ body::after {
 .skip-btn:disabled {
   opacity: 0.3;
   cursor: not-allowed;
+}
+
+#recover-spotify-btn {
+  border-color: rgba(255, 60, 60, 0.4);
+}
+
+#recover-spotify-btn:hover:not(:disabled) {
+  border-color: #ff7070;
+  background: rgba(255, 60, 60, 0.05);
 }
 
 /* ── Episode progress ── */
