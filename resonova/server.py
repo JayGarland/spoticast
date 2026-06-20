@@ -75,6 +75,31 @@ class Job:
 _jobs: dict[str, Job] = {}
 
 
+def _format_generation_error(exc: Exception) -> str:
+    """Return a user-facing error without hiding the real failing class/status."""
+    try:
+        from spotipy import SpotifyException
+    except ImportError:
+        SpotifyException = None  # type: ignore[assignment]
+
+    if SpotifyException is not None and isinstance(exc, SpotifyException):
+        status = exc.http_status
+        reason = getattr(exc, "reason", None) or getattr(exc, "msg", None) or str(exc)
+        if status == 404:
+            return "Playlist not found. Make sure it's public (or that you own it) and that the URI is correct."
+        if status == 401:
+            return "Spotify session expired. Reconnect Spotify, then try again."
+        if status == 403:
+            return (
+                "Spotify denied this request (403). This is usually playlist access, account permissions, "
+                "or a restricted Spotify endpoint rather than a stale login. Try a playlist you own; "
+                f"details: {reason}"
+            )
+        return f"Spotify request failed ({status}): {reason}"
+
+    return str(exc)
+
+
 def _select_playlist_tracks_for_episode(tracks: list[Any], playlist_uri: str) -> list[Any]:
     """Return a memory-aware varied episode order from a playlist."""
     return variety_store.select_tracks_for_episode(tracks, playlist_uri, settings.max_tracks)
@@ -429,22 +454,5 @@ async def _run_generation(job: Job):
     except Exception as exc:
         job.status = "error"
         job.error = str(exc)
-
-        # Produce friendlier messages for common Spotify API errors.
-        # Only rewrite messages for actual SpotifyException instances —
-        # string-matching "404" or "401" on arbitrary exceptions (TTS, Gemini,
-        # etc.) would produce misleading results.
-        try:
-            from spotipy import SpotifyException
-        except ImportError:
-            SpotifyException = None  # type: ignore[assignment]
-
-        msg = str(exc)
-        if SpotifyException is not None and isinstance(exc, SpotifyException):
-            if exc.http_status == 404:
-                msg = "Playlist not found. Make sure it's public (or that you own it) and that the URI is correct."
-            elif exc.http_status in (401, 403):
-                msg = "Spotify auth error. Try disconnecting and reconnecting your Spotify account."
-
-        job.push("error", {"message": msg})
+        job.push("error", {"message": _format_generation_error(exc)})
         logger.exception("Generation failed for job %s", job.job_id)
