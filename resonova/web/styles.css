@@ -1889,3 +1889,55 @@ body::after {
   border-color: var(--accent-mid);
   opacity: 0.9;
 }
+
+/* ── Network status banner ── */
+.network-status {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 200;
+  padding: 0.4rem 1.5rem;
+  background: rgba(255, 140, 0, 0.12);
+  border-bottom: 1px solid rgba(255, 140, 0, 0.3);
+  color: rgba(255, 180, 50, 0.9);
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  text-align: center;
+  pointer-events: none;
+}
+
+.network-status[data-kind="offline"] {
+  background: rgba(255, 60, 60, 0.1);
+  border-bottom-color: rgba(255, 60, 60, 0.25);
+  color: rgba(255, 100, 100, 0.9);
+}
+
+/* ── Skip Music button ── */
+#skip-music-btn {
+  border-color: rgba(255, 140, 0, 0.4);
+  color: rgba(255, 180, 50, 0.8);
+}
+
+#skip-music-btn:hover:not(:disabled) {
+  border-color: rgba(255, 180, 50, 0.7);
+  background: rgba(255, 140, 0, 0.06);
+  color: rgba(255, 210, 80, 1);
+}
+
+/* ── Cache notice (offline library) ── */
+.cache-notice {
+  width: 100%;
+  padding: 0.4rem 0.75rem;
+  background: rgba(255, 140, 0, 0.06);
+  border: 1px solid rgba(255, 140, 0, 0.2);
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0;
+  color: rgba(255, 180, 50, 0.7);
+  text-transform: uppercase;
+  margin-bottom: 0.5rem;
+}

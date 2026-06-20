@@ -72,8 +72,14 @@ class ResonovaPlayer {
     // Record initial network state
     this._obsRecord('online:init', navigator.onLine ? 'online' : 'offline');
 
-    window.addEventListener('online', () => this._obsRecord('online', ''));
-    window.addEventListener('offline', () => this._obsRecord('offline', ''));
+    window.addEventListener('online', () => {
+      this._obsRecord('online', '');
+      this._clearNetworkStatus();
+    });
+    window.addEventListener('offline', () => {
+      this._obsRecord('offline', '');
+      this._updateNetworkStatus('offline');
+    });
 
     window.addEventListener('pageshow', (e) => {
       this._obsRecord('pageshow', e.persisted ? 'persisted=true' : 'persisted=false');
@@ -110,7 +116,8 @@ class ResonovaPlayer {
     this._spotifyUnhealthy = true;
     this._spotifyRecoveryFailed = false;
     if (reason === 'auth' || reason === 'authentication_error') {
-      this._lifecycle.authError = message || 'authentication_error';
+      const baseMsg = message || 'authentication_error';
+      this._lifecycle.authError = !navigator.onLine ? `${baseMsg} (offline)` : baseMsg;
     }
     if (reason === 'playback' || reason === 'playback_error') {
       this._lifecycle.playbackError = message || 'playback_error';
@@ -251,9 +258,16 @@ class ResonovaPlayer {
         Recover Spotify
       `;
     }
+    this._updateSkipMusicButton();
   }
 
   async recoverSpotify() {
+    if (!navigator.onLine) {
+      this._obsRecord('recovery:blocked', 'offline');
+      this._setNowPlaying('Spotify unavailable offline', 'Use Next to continue commentary');
+      this._updateSkipMusicButton();
+      return;
+    }
     const success = await this._recoverSpotifySession();
     if (success && this.currentItem && this.currentItem.type === 'spotify') {
       await this._playSpotifyTrack(this.currentItem);
@@ -559,7 +573,24 @@ class ResonovaPlayer {
   // ──────────────────────────────────────────────
 
   async init() {
-    const { authenticated } = await this._apiFetch('/auth/token');
+    if (!navigator.onLine) {
+      this._updateNetworkStatus('offline');
+    }
+    let authData;
+    try {
+      authData = await this._apiFetch('/auth/token');
+    } catch (err) {
+      if (err.kind === 'offline' || err.kind === 'network') {
+        history.replaceState({ resonovaState: 'connected' }, '', location.pathname + location.search);
+        this._showState('connected');
+        this._loadEpisodes();
+        this._initHistoryNav();
+        this._initMediaSessionHandlers();
+        return;
+      }
+      throw err;
+    }
+    const { authenticated } = authData;
     if (!authenticated) {
       this._showState('landing');
       history.replaceState({ resonovaState: 'landing' }, '', location.pathname + location.search);
@@ -1002,6 +1033,7 @@ class ResonovaPlayer {
     this._updatePlayPauseButton();
     this._setSegmentType('commentary');
     this._setNowPlaying('AI Commentary', 'Podcast Intro');
+    this._updateSkipMusicButton();
 
     // Look ahead to find what Spotify track comes next (for context)
     const nextSpotify = this.queue.find(q => q.type === 'spotify');
@@ -1054,6 +1086,14 @@ class ResonovaPlayer {
     document.getElementById('progress-fill').classList.add('spotify-mode');
 
     if (!this._isSpotifyHealthy()) {
+      if (!navigator.onLine) {
+        this._obsRecord('play:spotify:offline', '');
+        this._setNowPlaying('Spotify unavailable offline', 'Use Next to continue commentary');
+        document.getElementById('waveform').classList.remove('spotify-mode');
+        document.getElementById('progress-fill').classList.remove('spotify-mode');
+        this._updateSkipMusicButton();
+        return;
+      }
       console.warn('Spotify unhealthy. Triggering automatic single recovery...');
       const recovered = await this._recoverSpotifySession();
       if (!recovered) {
@@ -1349,6 +1389,7 @@ class ResonovaPlayer {
     this._updatePlayPauseButton();
     this._setMediaSessionPlaybackState('none');
     this._updateNowPlayingMiniPanel();
+    this._updateSkipMusicButton();
   }
 
   // ──────────────────────────────────────────────
@@ -1365,38 +1406,65 @@ class ResonovaPlayer {
   }
 
   async _loadEpisodes() {
+    let episodes = null;
+    let fromCache = false;
     try {
-      const { episodes } = await this._apiFetch('/api/episodes');
-      if (!episodes.length) return;
-
-      // Group episodes by playlist_uri; custom track-list casts go under a separate bucket.
-      const groups = new Map();
-      for (const ep of episodes) {
-        const isPlaylist = ep.playlist_uri && ep.playlist_uri.startsWith('spotify:playlist:');
-        const key = isPlaylist ? ep.playlist_uri : '__custom__';
-        if (!groups.has(key)) {
-          groups.set(key, {
-            key,
-            name: isPlaylist ? (ep.playlist_name || 'Unnamed Playlist') : 'Custom Casts',
-            isCustom: !isPlaylist,
-            episodes: [],
-            latestDate: ep.created_at,
-          });
+      const data = await this._apiFetch('/api/episodes');
+      episodes = data.episodes;
+      try {
+        localStorage.setItem('resonova:episodes-cache', JSON.stringify({ ts: Date.now(), episodes }));
+      } catch { /* quota exceeded */ }
+    } catch (e) {
+      console.warn('Failed to load past episodes:', e);
+      try {
+        const raw = localStorage.getItem('resonova:episodes-cache');
+        if (raw) {
+          const cached = JSON.parse(raw);
+          episodes = cached.episodes;
+          fromCache = true;
         }
-        const g = groups.get(key);
-        g.episodes.push(ep);
-        if (ep.created_at > g.latestDate) g.latestDate = ep.created_at;
+      } catch { /* ignore */ }
+      if (!episodes) return;
+    }
+
+    if (!episodes || !episodes.length) return;
+
+    // Group episodes by playlist_uri; custom track-list casts go under a separate bucket.
+    const groups = new Map();
+    for (const ep of episodes) {
+      const isPlaylist = ep.playlist_uri && ep.playlist_uri.startsWith('spotify:playlist:');
+      const key = isPlaylist ? ep.playlist_uri : '__custom__';
+      if (!groups.has(key)) {
+        groups.set(key, {
+          key,
+          name: isPlaylist ? (ep.playlist_name || 'Unnamed Playlist') : 'Custom Casts',
+          isCustom: !isPlaylist,
+          episodes: [],
+          latestDate: ep.created_at,
+        });
       }
+      const g = groups.get(key);
+      g.episodes.push(ep);
+      if (ep.created_at > g.latestDate) g.latestDate = ep.created_at;
+    }
 
-      // Sort groups newest-first; expand only the most recent group by default.
-      const sortedGroups = [...groups.values()].sort(
-        (a, b) => b.latestDate.localeCompare(a.latestDate)
-      );
+    // Sort groups newest-first; expand only the most recent group by default.
+    const sortedGroups = [...groups.values()].sort(
+      (a, b) => b.latestDate.localeCompare(a.latestDate)
+    );
 
-      const container = document.getElementById('past-episodes');
-      container.innerHTML = sortedGroups.map((g, i) => this._episodeGroupHTML(g, i === 0)).join('');
-      document.getElementById('section-episodes').classList.add('loaded');
-    } catch (e) { console.warn('Failed to load past episodes:', e); }
+    const container = document.getElementById('past-episodes');
+    container.innerHTML = sortedGroups.map((g, i) => this._episodeGroupHTML(g, i === 0)).join('');
+
+    document.querySelectorAll('.cache-notice').forEach(el => el.remove());
+    if (fromCache) {
+      const notice = document.createElement('div');
+      notice.className = 'cache-notice';
+      notice.textContent = 'Offline — showing saved casts from cache';
+      container.before(notice);
+    }
+
+    document.getElementById('section-episodes').classList.add('loaded');
   }
 
   _episodeGroupHTML(group, expanded) {
@@ -1497,8 +1565,19 @@ class ResonovaPlayer {
     this._episodeId = episodeId;
     try {
       const ep = await this._apiFetch(`/api/episodes/${episodeId}`);
+      try {
+        localStorage.setItem(`resonova:episode:${episodeId}`, JSON.stringify({ ts: Date.now(), ep }));
+      } catch { /* quota exceeded */ }
       this._startPlayback(ep.queue);
     } catch (err) {
+      try {
+        const raw = localStorage.getItem(`resonova:episode:${episodeId}`);
+        if (raw) {
+          const cached = JSON.parse(raw);
+          this._startPlayback(cached.ep.queue);
+          return;
+        }
+      } catch { /* ignore */ }
       this._showError('Could not load episode: ' + err.message);
     }
   }
@@ -1756,8 +1835,25 @@ class ResonovaPlayer {
   }
 
   async _apiFetch(url, options = {}) {
-    const res = await fetch(url, options);
-    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    let res;
+    try {
+      res = await fetch(url, options);
+    } catch (netErr) {
+      const kind = !navigator.onLine ? 'offline' : 'network';
+      if (url.startsWith('/')) this._updateNetworkStatus(kind);
+      const err = new Error(kind === 'offline'
+        ? `Offline — cannot reach ${url}`
+        : `Network error: ${url}`);
+      err.kind = kind;
+      throw err;
+    }
+    if (!res.ok) {
+      const err = new Error(`${res.status} ${res.statusText}`);
+      err.kind = 'http';
+      err.status = res.status;
+      throw err;
+    }
+    if (url.startsWith('/')) this._clearNetworkStatus();
     return res.json();
   }
 
@@ -1880,6 +1976,43 @@ class ResonovaPlayer {
       localStorage.setItem(`sc:${uri}`, JSON.stringify({ ts: Date.now(), data }));
     } catch { /* quota exceeded — ignore */ }
   }
+
+  // ──────────────────────────────────────────────
+  // Network status indicator
+  // ──────────────────────────────────────────────
+
+  _updateNetworkStatus(kind) {
+    const el = document.getElementById('network-status');
+    if (!el) return;
+    const msgs = { offline: 'Offline — saved casts only', network: 'Connection unstable' };
+    el.textContent = msgs[kind] || 'Connection unstable';
+    el.dataset.kind = kind;
+    el.style.display = '';
+    this._obsRecord('network:status', kind);
+  }
+
+  _clearNetworkStatus() {
+    const el = document.getElementById('network-status');
+    if (!el || el.style.display === 'none') return;
+    el.style.display = 'none';
+    this._obsRecord('network:clear', '');
+  }
+
+  // ──────────────────────────────────────────────
+  // Skip Music button visibility
+  // ──────────────────────────────────────────────
+
+  _updateSkipMusicButton() {
+    const btn = document.getElementById('skip-music-btn');
+    if (!btn) return;
+    if (!btn._wired) {
+      btn.addEventListener('click', () => this.skip());
+      btn._wired = true;
+    }
+    const shouldShow = this.currentItem?.type === 'spotify' &&
+      (this._spotifyUnhealthy || this._spotifyRecoveryFailed || !navigator.onLine);
+    btn.style.display = shouldShow ? '' : 'none';
+  }
 }
 
 // ──────────────────────────────────────────────
@@ -1989,6 +2122,14 @@ document.addEventListener('DOMContentLoaded', () => {
   if (recoverBtn) {
     recoverBtn.addEventListener('click', () => {
       resonova.recoverSpotify();
+    });
+  }
+
+  const skipMusicBtn = document.getElementById('skip-music-btn');
+  if (skipMusicBtn) {
+    skipMusicBtn._wired = true;
+    skipMusicBtn.addEventListener('click', () => {
+      resonova.skip();
     });
   }
 

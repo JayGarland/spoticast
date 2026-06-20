@@ -20,6 +20,9 @@
     </div>
   </header>
 
+  <!-- Network status banner — visible to all users when offline or local API unreachable -->
+  <div id="network-status" class="network-status" style="display:none" role="status" aria-live="polite"></div>
+
   <div id="app">
 
     <!-- ════════════════════════════════════
@@ -335,6 +338,13 @@
           </svg>
           Next
         </button>
+        <button class="skip-btn" id="skip-music-btn" style="display: none;">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path d="M4 4l8 6-8 6V4z" fill="currentColor"/>
+            <rect x="14" y="4" width="2.5" height="12" rx="1" fill="currentColor"/>
+          </svg>
+          Skip Music
+        </button>
         <button class="skip-btn" id="recover-spotify-btn" style="display: none;">
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
             <!-- Use a suitable svg icon for recovery, e.g. a reload/refresh circle -->
@@ -366,7 +376,7 @@
   <!-- Hidden audio element for commentary playback -->
   <audio id="resonova-audio" preload="auto"></audio>
 
-  <script src="/web/player.js?v=20260620-now-playing-trail"></script>
+  <script src="/web/player.js?v=20260620-offline-resilience"></script>
 
 </body>
 </html>
