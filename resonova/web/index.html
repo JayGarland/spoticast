@@ -162,6 +162,10 @@
 
       <div class="error-msg" id="error-msg"></div>
 
+      <button class="now-playing-return" id="return-to-player-btn" type="button" style="display:none">
+        Return to Player
+      </button>
+
       <!-- Past episodes -->
       <div class="library-section" id="section-episodes">
         <h3 class="library-section-title">Past Episodes</h3>
@@ -193,6 +197,10 @@
          STATE: GENERATING
          ════════════════════════════════════ -->
     <div class="state" id="state-generating">
+
+      <button class="back-btn" id="back-from-generating-btn" title="Back to library — generation continues in background">
+        ← Back <span class="back-generating-note">· generating in background</span>
+      </button>
 
       <div class="generating-header">
         <h2 class="generating-title">Producing your episode…</h2>
@@ -235,6 +243,8 @@
     <div class="state" id="state-playing">
 
       <!-- Segment type indicator -->
+      <button class="back-btn" id="back-to-library-btn" title="Back to Library">← Library</button>
+
       <div class="segment-type" id="segment-type">
         <div class="segment-type-dot"></div>
         <span class="segment-type-label"></span>

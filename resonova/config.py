@@ -27,8 +27,10 @@ class Settings(BaseSettings):
     google_cloud_project: str | None = None
     google_cloud_location: str = "global"
     gemini_model: str = "gemini-3.1-pro-preview"
-    gemini_research_model: str = "gemini-3.1-flash-lite-preview"
-    gemini_tts_model: str = "gemini-2.5-pro-preview-tts"
+    # gemini-3.1-flash-lite-preview was shut down 2026-05-25; replaced by gemini-3.1-flash-lite.
+    gemini_research_model: str = "gemini-3.1-flash-lite"
+    # gemini-3.1-flash-tts-preview is already deployed in prod .env and supports multi-speaker TTS.
+    gemini_tts_model: str = "gemini-3.1-flash-tts-preview"
 
     max_tracks: int = 30
     host: str = "127.0.0.1"

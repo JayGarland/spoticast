@@ -399,12 +399,15 @@ class ResonovaPlayer {
     const { authenticated } = await this._apiFetch('/auth/token');
     if (!authenticated) {
       this._showState('landing');
+      history.replaceState({ resonovaState: 'landing' }, '', location.pathname + location.search);
       return;
     }
+    history.replaceState({ resonovaState: 'connected' }, '', location.pathname + location.search);
     this._showState('connected');
     this._loadSpotifySDK();
     this._loadLibrary();
     this._initLastFM();
+    this._initHistoryNav();
 
     // Check for unfinished episode
     if (!this._resumeChecked) {
@@ -415,6 +418,24 @@ class ResonovaPlayer {
         setTimeout(() => this._showResumePrompt(resumeState), 200);
       }
     }
+  }
+
+  // ── Browser history navigation ──────────────────────────────────────────
+
+  _pushHistoryState(name) {
+    history.pushState({ resonovaState: name }, '', location.pathname + location.search);
+  }
+
+  _initHistoryNav() {
+    window.addEventListener('popstate', (e) => {
+      const s = e.state?.resonovaState;
+      // Generating and playing are transient; any back navigation returns to library.
+      if (s === 'landing') {
+        this._showState('landing');
+      } else {
+        this._showState('connected');
+      }
+    });
   }
 
   // ── Last.fm widget ──────────────────────────────────────────────────────
@@ -584,6 +605,7 @@ class ResonovaPlayer {
       return;
     }
 
+    this._pushHistoryState('generating');
     this._showState('generating');
 
     let jobId;
@@ -679,6 +701,7 @@ class ResonovaPlayer {
     this.currentIndex = -1;
     this.totalItems = queue.length;
     this.completedItems = 0;
+    this._pushHistoryState('playing');
     this._showState('playing');
     document.getElementById('on-air-badge').classList.add('active');
     this._renderDiagnostics(null);
@@ -998,10 +1021,57 @@ class ResonovaPlayer {
     try {
       const { episodes } = await this._apiFetch('/api/episodes');
       if (!episodes.length) return;
+
+      // Group episodes by playlist_uri; custom track-list casts go under a separate bucket.
+      const groups = new Map();
+      for (const ep of episodes) {
+        const isPlaylist = ep.playlist_uri && ep.playlist_uri.startsWith('spotify:playlist:');
+        const key = isPlaylist ? ep.playlist_uri : '__custom__';
+        if (!groups.has(key)) {
+          groups.set(key, {
+            key,
+            name: isPlaylist ? (ep.playlist_name || 'Unnamed Playlist') : 'Custom Casts',
+            isCustom: !isPlaylist,
+            episodes: [],
+            latestDate: ep.created_at,
+          });
+        }
+        const g = groups.get(key);
+        g.episodes.push(ep);
+        if (ep.created_at > g.latestDate) g.latestDate = ep.created_at;
+      }
+
+      // Sort groups newest-first; expand only the most recent group by default.
+      const sortedGroups = [...groups.values()].sort(
+        (a, b) => b.latestDate.localeCompare(a.latestDate)
+      );
+
       const container = document.getElementById('past-episodes');
-      container.innerHTML = episodes.map(ep => this._episodeCardHTML(ep)).join('');
+      container.innerHTML = sortedGroups.map((g, i) => this._episodeGroupHTML(g, i === 0)).join('');
       document.getElementById('section-episodes').classList.add('loaded');
     } catch (e) { console.warn('Failed to load past episodes:', e); }
+  }
+
+  _episodeGroupHTML(group, expanded) {
+    const latestDate = new Date(group.latestDate).toLocaleDateString(undefined, {
+      month: 'short', day: 'numeric', year: 'numeric',
+    });
+    const count = group.episodes.length;
+    const castLabel = count === 1 ? '1 cast' : `${count} casts`;
+    return `
+      <div class="ep-group${expanded ? ' expanded' : ''}">
+        <div class="ep-group-header" data-group-toggle>
+          <span class="ep-group-chevron" aria-hidden="true">${expanded ? '▾' : '▸'}</span>
+          <span class="ep-group-name">${this._esc(group.name)}</span>
+          <span class="ep-group-meta">${this._esc(castLabel)} · ${this._esc(latestDate)}</span>
+        </div>
+        <div class="ep-group-body">
+          <div class="ep-group-cards">
+            ${group.episodes.map(ep => this._episodeCardHTML(ep)).join('')}
+          </div>
+        </div>
+      </div>
+    `;
   }
 
   _episodeCardHTML(ep) {
@@ -1164,6 +1234,14 @@ class ResonovaPlayer {
         document.getElementById('on-air-badge')?.appendChild(this._createDiagToggle());
       }
     }
+    this._updateLibraryReturnButton(name);
+  }
+
+  _updateLibraryReturnButton(stateName = null) {
+    const btn = document.getElementById('return-to-player-btn');
+    if (!btn) return;
+    const shouldShow = stateName === 'connected' && !!this.currentItem;
+    btn.style.display = shouldShow ? '' : 'none';
   }
 
   _showError(msg) {
@@ -1448,6 +1526,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Playlist card clicks (delegated — covers recent, featured, and library)
   document.getElementById('state-connected').addEventListener('click', (e) => {
+    // Accordion group header toggle
+    const groupHeader = e.target.closest('[data-group-toggle]');
+    if (groupHeader) {
+      const group = groupHeader.closest('.ep-group');
+      if (group) {
+        const wasExpanded = group.classList.contains('expanded');
+        group.classList.toggle('expanded');
+        const chevron = groupHeader.querySelector('.ep-group-chevron');
+        if (chevron) chevron.textContent = wasExpanded ? '▸' : '▾';
+      }
+      return;
+    }
+
     // Episode action buttons (play, rename, delete) — check before general card click
     const actionBtn = e.target.closest('[data-action]');
     if (actionBtn) {
@@ -1471,6 +1562,20 @@ document.addEventListener('DOMContentLoaded', () => {
     if (card) {
       resonova._handlePlaylistClick(card.dataset.uri);
     }
+  });
+
+  // Back-to-library buttons
+  document.getElementById('back-to-library-btn').addEventListener('click', () => {
+    resonova._showState('connected');
+  });
+
+  document.getElementById('back-from-generating-btn').addEventListener('click', () => {
+    resonova._showState('connected');
+  });
+
+  document.getElementById('return-to-player-btn').addEventListener('click', () => {
+    resonova._pushHistoryState('playing');
+    resonova._showState('playing');
   });
 
   // Skip button

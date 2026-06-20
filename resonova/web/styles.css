@@ -795,6 +795,140 @@ body::after {
   }
 }
 
+/* ── Episode library accordion groups ── */
+.ep-group {
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 0.5rem;
+}
+
+.ep-group:last-child {
+  margin-bottom: 0;
+}
+
+.ep-group-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.65rem 1rem;
+  cursor: pointer;
+  background: var(--panel);
+  transition: background 0.2s;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.ep-group-header:hover {
+  background: var(--accent-low);
+}
+
+.ep-group-chevron {
+  font-size: 0.6rem;
+  color: var(--cream-low);
+  flex-shrink: 0;
+  width: 0.75rem;
+  text-align: center;
+}
+
+.ep-group-name {
+  font-family: var(--font-disp);
+  font-size: 0.95rem;
+  font-weight: 400;
+  color: var(--cream-mid);
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ep-group.expanded .ep-group-name {
+  color: var(--cream);
+}
+
+.ep-group-meta {
+  font-family: var(--font-mono);
+  font-size: 0.5rem;
+  color: var(--cream-faint);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.ep-group-body {
+  display: none;
+  border-top: 1px solid var(--panel-border);
+}
+
+.ep-group.expanded .ep-group-body {
+  display: block;
+}
+
+.ep-group-cards {
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.ep-group .episode-card {
+  border-radius: 3px;
+  margin: 0;
+}
+
+/* ── Back-to-library button ── */
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.65rem;
+  background: transparent;
+  border: 1px solid var(--panel-border);
+  border-radius: 3px;
+  color: var(--cream-low);
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+  align-self: flex-start;
+}
+
+.back-btn:hover {
+  border-color: var(--cream-low);
+  color: var(--cream-mid);
+}
+
+.back-generating-note {
+  color: var(--cream-faint);
+  font-size: 0.5rem;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.now-playing-return {
+  width: 100%;
+  margin-top: 0.5rem;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid var(--accent-mid);
+  border-radius: 4px;
+  background: var(--accent-low);
+  color: var(--cream);
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.now-playing-return:hover {
+  border-color: var(--accent);
+  background: rgba(108, 99, 255, 0.18);
+}
+
 /* Playlist grid — for user playlists */
 .playlist-grid {
   display: grid;
