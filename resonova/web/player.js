@@ -714,17 +714,18 @@ class ResonovaPlayer {
   }
 
   async _transferPlayback(deviceId, token) {
-    try {
-      await fetch('https://api.spotify.com/v1/me/player', {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ device_ids: [deviceId], play: false }),
-      });
-    } catch (err) {
-      console.warn('Transfer playback failed:', err);
+    const res = await fetch('https://api.spotify.com/v1/me/player', {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ device_ids: [deviceId], play: false }),
+    });
+    if (!res.ok) {
+      let detail = '';
+      try { detail = await res.text(); } catch (_) { }
+      throw new Error(`Transfer playback failed: ${res.status}${detail ? `: ${detail.slice(0, 180)}` : ''}`);
     }
   }
 
@@ -746,6 +747,31 @@ class ResonovaPlayer {
       err.status = res.status;
       throw err;
     }
+  }
+
+  async _waitForSpotifyPlaybackStart(uri, timeoutMs = 3000) {
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+      try {
+        const state = await this.spotifyPlayer?.getCurrentState();
+        if (state) {
+          this._renderDiagnostics(state);
+          const currentUri = state.track_window?.current_track?.uri;
+          if (currentUri === uri && !state.paused) return true;
+        }
+      } catch (_) { }
+      await new Promise(resolve => setTimeout(resolve, 250));
+    }
+    return false;
+  }
+
+  _discardSpotifyDevice(reason) {
+    console.warn('[Resonova] Discarding Spotify device:', reason);
+    try { this.spotifyPlayer?.disconnect(); } catch (_) { }
+    this.spotifyPlayer = null;
+    this.deviceId = null;
+    this._lifecycle.ready = false;
+    this._lifecycle.deviceId = null;
   }
 
   // ──────────────────────────────────────────────
@@ -1009,14 +1035,27 @@ class ResonovaPlayer {
       await this.spotifyPlayer.setVolume(_SPOTIFY_VOLUME);
       try {
         await this._sendSpotifyPlayCommand(token, item.uri);
+        const started = await this._waitForSpotifyPlaybackStart(item.uri);
+        if (!started) {
+          const err = new Error('Spotify SDK did not report playback after play command');
+          err.code = 'spotify_no_state';
+          throw err;
+        }
       } catch (err) {
-        if (err.status !== 404) throw err;
-        console.warn('[Resonova] Spotify device returned 404; rebuilding SDK session once and retrying playback.');
-        this._markSpotifyUnhealthy('not_ready', 'Device playback endpoint returned 404');
+        if (err.status !== 404 && err.code !== 'spotify_no_state') throw err;
+        console.warn('[Resonova] Spotify device failed to start playback; rebuilding SDK session once and retrying.', err);
+        this._markSpotifyUnhealthy('not_ready', err.message || 'Spotify device did not start playback');
+        this._discardSpotifyDevice(err.message || 'playback did not start');
         const recovered = await this._recoverSpotifySession();
         if (!recovered) throw err;
         const { token: freshToken } = await this._apiFetch('/auth/token');
         await this._sendSpotifyPlayCommand(freshToken, item.uri);
+        const retryStarted = await this._waitForSpotifyPlaybackStart(item.uri, 5000);
+        if (!retryStarted) {
+          const retryErr = new Error('Spotify SDK still did not report playback after recovery');
+          retryErr.code = 'spotify_no_state';
+          throw retryErr;
+        }
       }
       this._setMediaSessionPlaybackState('playing');
     } catch (err) {
