@@ -1831,6 +1831,36 @@ body::after {
   color: var(--accent);
 }
 
+.spotify-diag-section-label {
+  font-size: 0.62rem;
+  color: var(--cream-faint);
+  text-transform: uppercase;
+  letter-spacing: 0;
+  margin: 0.3rem 0 0.2rem;
+}
+
+.spotify-diag-event {
+  font-size: 0.66rem;
+  line-height: 1.5;
+  color: var(--cream-mid);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.spotify-diag-etime {
+  color: var(--cream-faint);
+  margin-right: 0.25rem;
+}
+
+.spotify-diag-ename {
+  color: var(--accent);
+}
+
+.spotify-diag-edetail {
+  color: var(--cream-mid);
+}
+
 /* Diagnostic toggle button */
 .diag-toggle {
   display: inline-flex;

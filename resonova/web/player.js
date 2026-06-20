@@ -64,12 +64,37 @@ class ResonovaPlayer {
     this._nowPlayingTitle = '';
     this._nowPlayingArtist = '';
 
+    // ── Observability ring buffer (max 50 entries) ─────────────────────────
+    this._obsTimeline = [];
+    this._deviceGeneration = 0;
+    this._deviceAcquiredAt = null;
+
+    // Record initial network state
+    this._obsRecord('online:init', navigator.onLine ? 'online' : 'offline');
+
+    window.addEventListener('online', () => this._obsRecord('online', ''));
+    window.addEventListener('offline', () => this._obsRecord('offline', ''));
+
+    window.addEventListener('pageshow', (e) => {
+      this._obsRecord('pageshow', e.persisted ? 'persisted=true' : 'persisted=false');
+    });
+    window.addEventListener('pagehide', (e) => {
+      this._obsRecord('pagehide', e.persisted ? 'persisted=true' : 'persisted=false');
+    });
+
     // Foreground reconciliation: check Spotify state when page becomes visible
     document.addEventListener('visibilitychange', () => {
+      this._obsRecord('visibilitychange', document.visibilityState);
       if (document.visibilityState !== 'visible') return;
       if (!this.currentItem) return;
       this._reconcileAfterBackground();
     });
+  }
+
+  _obsRecord(event, detail = '') {
+    this._obsTimeline.push({ t: Date.now(), event, detail: String(detail).slice(0, 120) });
+    if (this._obsTimeline.length > 50) this._obsTimeline.shift();
+    if (this._diagVisible) this._renderDiagnostics(null);
   }
 
   _isSpotifyHealthy() {
@@ -137,6 +162,7 @@ class ResonovaPlayer {
 
     this._spotifyRecoveryPromise = (async () => {
       try {
+        this._obsRecord('recovery:start', '');
         const { token } = await this._apiFetch('/auth/token');
         if (!token) throw new Error('No Spotify token');
         this._cachedToken = token;
@@ -172,11 +198,13 @@ class ResonovaPlayer {
         this._lifecycle.notReady = false;
         this._lifecycle.ready = true;
         this._lifecycle.deviceId = deviceId;
+        this._obsRecord('recovery:success', '');
         this._renderDiagnostics(null);
         return true;
       } catch (err) {
         console.warn('[Resonova] Spotify recovery failed:', err);
         this._spotifyRecoveryFailed = true;
+        this._obsRecord('recovery:fail', (err?.message || '').slice(0, 80));
         this._renderDiagnostics(null);
         return false;
       } finally {
@@ -661,6 +689,9 @@ class ResonovaPlayer {
       this.deviceId = device_id;
       this._lifecycle.ready = true;
       this._lifecycle.deviceId = device_id;
+      this._deviceGeneration++;
+      this._deviceAcquiredAt = Date.now();
+      this._obsRecord('device:ready', `gen=${this._deviceGeneration} id=...${device_id.slice(-6)}`);
       this._clearSpotifyUnhealthy();
       this._transferPlayback(device_id, token);
     });
@@ -750,10 +781,12 @@ class ResonovaPlayer {
   }
 
   async _sendSpotifyPlayCommand(token, uri) {
+    this._obsRecord('play:cmd:start', uri.slice(-24));
     const visible = await this._waitForSpotifyConnectDevice(token, this.deviceId, 5000);
     if (!visible) {
       const err = new Error('Spotify device is not visible in Connect devices');
       err.status = 404;
+      this._obsRecord('play:cmd:fail', `404:device-not-visible`);
       throw err;
     }
     const res = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${this.deviceId}`, {
@@ -767,12 +800,14 @@ class ResonovaPlayer {
     if (!res.ok) {
       let detail = '';
       try { detail = await res.text(); } catch (_) { }
+      this._obsRecord('play:cmd:fail', `${res.status}:${detail.slice(0, 60)}`);
       const err = new Error(
         `Device playback endpoint returned ${res.status}${detail ? `: ${detail.slice(0, 180)}` : ''}`
       );
       err.status = res.status;
       throw err;
     }
+    this._obsRecord('play:cmd:ok', `${res.status}`);
   }
 
   async _waitForSpotifyPlaybackStart(uri, timeoutMs = 3000) {
@@ -792,6 +827,7 @@ class ResonovaPlayer {
   }
 
   _discardSpotifyDevice(reason) {
+    this._obsRecord('device:discard', (reason || '').slice(0, 80));
     console.warn('[Resonova] Discarding Spotify device:', reason);
     try { this.spotifyPlayer?.disconnect(); } catch (_) { }
     this.spotifyPlayer = null;
@@ -1070,7 +1106,10 @@ class ResonovaPlayer {
         const started = await this._waitForSpotifyPlaybackStart(item.uri);
         if (!started) {
           console.warn('[Resonova] Spotify play command succeeded but SDK state is blank; continuing in blind playback mode.');
+          this._obsRecord('play:start:blind', '');
           this._setBlindSpotifyDeadline(item);
+        } else {
+          this._obsRecord('play:start:confirmed', '');
         }
       } catch (err) {
         if (err.status !== 404) throw err;
@@ -1084,11 +1123,15 @@ class ResonovaPlayer {
         const retryStarted = await this._waitForSpotifyPlaybackStart(item.uri, 5000);
         if (!retryStarted) {
           console.warn('[Resonova] Spotify retry command succeeded but SDK state is still blank; continuing in blind playback mode.');
+          this._obsRecord('play:start:blind', 'retry');
           this._setBlindSpotifyDeadline(item);
+        } else {
+          this._obsRecord('play:start:confirmed', 'retry');
         }
       }
       this._setMediaSessionPlaybackState('playing');
     } catch (err) {
+      this._obsRecord('play:start:failed', (err?.message || '').slice(0, 80));
       console.error('Spotify play failed:', err);
       this._markSpotifyUnhealthy('playback_error', err.message || 'Direct play command failed');
       this._spotifyRecoveryFailed = true;
@@ -1103,9 +1146,11 @@ class ResonovaPlayer {
     if (this._segmentDeadline || !item?.duration_ms) return;
     const sentinel = item;
     const deadlineMs = Math.max(3000, item.duration_ms + 3000);
+    this._obsRecord('deadline:blind:armed', `${deadlineMs}ms`);
     this._segmentDeadline = setTimeout(() => {
       if (this.currentItem === sentinel && !this._trackEndFired) {
         console.log('[Resonova] Blind Spotify deadline fired; forcing advance');
+        this._obsRecord('deadline:blind:fired', '');
         this._trackEndFired = true;
         this._fadeSpotifyVolume(_SPOTIFY_VOLUME, 0, _CROSSFADE_MS).then(() => this._playNext());
       }
@@ -1133,9 +1178,11 @@ class ResonovaPlayer {
       const remainingMs = Math.max(0, state.duration - (state.position || 0));
       const deadlineMs = Math.max(3000, remainingMs + 3000);
       const sentinel = this.currentItem;
+      this._obsRecord('deadline:seg:armed', `${deadlineMs}ms`);
       this._segmentDeadline = setTimeout(() => {
         if (this.currentItem === sentinel && !this._trackEndFired) {
           console.log('[Resonova] Segment deadline fired; forcing advance');
+          this._obsRecord('deadline:seg:fired', '');
           this._trackEndFired = true;
           this._fadeSpotifyVolume(_SPOTIFY_VOLUME, 0, _CROSSFADE_MS).then(() => this._playNext());
         }
@@ -1177,6 +1224,23 @@ class ResonovaPlayer {
       return m + ':' + String(sec).padStart(2, '0');
     };
 
+    const fmtAge = (acquiredAt) => {
+      if (!acquiredAt) return '-';
+      const ageS = Math.floor((Date.now() - acquiredAt) / 1000);
+      return ageS < 60 ? `${ageS}s` : `${Math.floor(ageS / 60)}m${ageS % 60}s`;
+    };
+
+    const fmtTime = (ts) => {
+      const d = new Date(ts);
+      return d.toTimeString().slice(0, 8);
+    };
+    const escapeHtml = (value) => String(value)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
+
     const d = {
       paused: state ? (state.paused ? 'yes' : 'no') : 'waiting',
       position: state ? fmtMs(state.position) : '--:--',
@@ -1193,7 +1257,17 @@ class ResonovaPlayer {
     const row = (label, value, warn) =>
       `<div class="spotify-diag-row"><span class="spotify-diag-label">${label}</span><span class="spotify-diag-value${warn ? ' warn' : ''}">${value}</span></div>`;
 
+    // Events section — most recent 10 entries, newest first
+    const recentEvents = this._obsTimeline.slice(-10).reverse();
+    const eventsHtml = recentEvents.length
+      ? recentEvents.map(e => `<div class="spotify-diag-event"><span class="spotify-diag-etime">${fmtTime(e.t)}</span> <span class="spotify-diag-ename">${escapeHtml(e.event)}</span>${e.detail ? ` <span class="spotify-diag-edetail">${escapeHtml(e.detail)}</span>` : ''}</div>`).join('')
+      : '<div class="spotify-diag-event" style="color:var(--cream-faint)">no events yet</div>';
+
     this._diagEl.innerHTML =
+      row('Online', navigator.onLine ? 'yes' : 'NO', !navigator.onLine) +
+      row('Device gen', this._deviceGeneration || '0') +
+      row('Device age', fmtAge(this._deviceAcquiredAt)) +
+      '<div class="spotify-diag-sep"></div>' +
       row('Paused', d.paused) +
       row('Position', d.position) +
       row('Duration', d.duration) +
@@ -1217,13 +1291,36 @@ class ResonovaPlayer {
       row('SecureCtx', lc.isSecureContext ? 'true' : 'false', !lc.isSecureContext) +
       row('Protocol', lc.protocol) +
       row('UA', (lc.userAgent || '').slice(0, 48) + (lc.userAgent && lc.userAgent.length > 48 ? '...' : '')) +
-      '<button class="spotify-diag-refresh" id="spotify-diag-refresh">Refresh State</button>';
+      '<div class="spotify-diag-sep"></div>' +
+      '<div class="spotify-diag-section-label">Events</div>' +
+      eventsHtml +
+      '<div style="display:flex;gap:0.4rem;margin-top:0.5rem;">' +
+      '<button class="spotify-diag-refresh" id="spotify-diag-refresh" style="flex:1">Refresh State</button>' +
+      '<button class="spotify-diag-refresh" id="spotify-diag-copy" style="flex:1">Copy Timeline</button>' +
+      '</div>';
 
     // Bind refresh button (re-bind every render since innerHTML replaces it)
     const btn = this._diagEl.querySelector('#spotify-diag-refresh');
     if (btn) {
       btn.addEventListener('click', () => this._refreshDiagnostics());
     }
+    const copyBtn = this._diagEl.querySelector('#spotify-diag-copy');
+    if (copyBtn) {
+      copyBtn.addEventListener('click', () => this._copyObsTimeline());
+    }
+  }
+
+  _copyObsTimeline() {
+    const lines = this._obsTimeline.map(e => {
+      const d = new Date(e.t);
+      const ts = d.toISOString();
+      return `${ts} ${e.event}${e.detail ? ' ' + e.detail : ''}`;
+    });
+    const text = lines.join('\n') || '(no events)';
+    navigator.clipboard?.writeText(text).catch(() => {
+      // Fallback: show in console if clipboard unavailable
+      console.log('[Resonova] Obs Timeline:\n' + text);
+    });
   }
 
   async _refreshDiagnostics() {
