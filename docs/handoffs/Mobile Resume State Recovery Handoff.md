@@ -7,7 +7,7 @@ When mobile playback is interrupted by idle/lockscreen (auth errors, page freeze
 
 Three mechanisms, all in `player.js` only:
 
-1. **Playback state persistence** — Saves episode ID, remaining queue, previous-segment history, current item, progress, and segment type to `localStorage` key `resonova:resume` on every segment transition.
+1. **Playback state persistence** — Saves episode ID, remaining queue, playback timeline/current index, previous-segment history, current item, progress, and segment type to `localStorage` key `resonova:resume` on every segment transition.
 2. **Resume affordance** — On `init()` after auth, checks for unfinished episode. Shows a "Resume" card in the connected state with segment progress info. Clears on dismiss or episode completion.
 3. **Foreground reconciliation** — `visibilitychange` listener queries Spotify `getCurrentState()` when page becomes visible. If track appears ended (paused, near position 0, has history), advances gracefully. If auth error exists but resume state exists, treats it as non-fatal.
 
@@ -23,7 +23,7 @@ Three mechanisms, all in `player.js` only:
 
 | Method | Lines | Purpose |
 |---|---|---|
-| `_saveResumeState()` | 80-98 | Writes `resonova:resume` to localStorage with episodeId, queue snapshot, playedItems, currentItem, progress, segmentType, timestamp |
+| `_saveResumeState()` | 80-98 | Writes `resonova:resume` to localStorage with episodeId, queue snapshot, playbackTimeline/currentIndex, playedItems, currentItem, progress, segmentType, timestamp |
 | `_clearResumeState()` | 100-102 | Removes `resonova:resume` from localStorage |
 | `_checkResumeState()` | 104-118 | Reads + validates resume state; expires after 30 minutes; handles corruption gracefully |
 | `_showResumePrompt(state)` | 121-159 | Creates a "Resume" card in #state-connected with segment progress, Resume + Dismiss buttons |
@@ -33,7 +33,8 @@ Three mechanisms, all in `player.js` only:
 ## Chef Gate Corrections
 
 - Generated casts now set `_episodeId = jobId` immediately after `/generate` returns, because the server uses the job ID as the eventual saved episode ID.
-- Resume state now saves and restores `playedItems`, so the in-app Previous segment button can work after resume/recovery.
+- Resume state now saves and restores a full `playbackTimeline` plus `currentIndex`, so the in-app Previous segment button can work after live generation, resume, and recovery.
+- Previous-button enablement now derives from `currentIndex > 0` instead of the brittle `playedItems.length`.
 - `_resumePlayback()` no longer references non-existent `#step-intro`; it resumes directly into the player state.
 - `_resumePlayback()` restores `totalItems` from saved state after queue rebuild, preserving progress display.
 - Live queue updates (`track_ready`, `outro_ready`) save resume state after appending newly available segments.
@@ -60,6 +61,8 @@ Key: `resonova:resume`
     "episodeId": "06a35...",
     "queue": [{ "type": "audio", "url": "..." }, { "type": "spotify", "uri": "..." }],
     "playedItems": [{ "type": "audio", "url": "..." }],
+    "playbackTimeline": [{ "type": "audio", "url": "..." }, { "type": "spotify", "uri": "..." }],
+    "currentIndex": 1,
     "currentItem": { "type": "spotify", "uri": "...", "name": "...", "artist": "..." },
     "completedItems": 3,
     "totalItems": 14,

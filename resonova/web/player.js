@@ -18,6 +18,8 @@ class ResonovaPlayer {
   constructor() {
     this.queue               = [];
     this.playedItems         = [];
+    this.playbackTimeline    = [];
+    this.currentIndex        = -1;
     this.totalItems          = 0;
     this.completedItems      = 0;
     this.deviceId            = null;
@@ -87,6 +89,8 @@ class ResonovaPlayer {
       episodeId: this._episodeId,
       queue: this.queue.slice(),
       playedItems: this.playedItems.slice(),
+      playbackTimeline: this.playbackTimeline.slice(),
+      currentIndex: this.currentIndex,
       currentItem: this.currentItem ? { ...this.currentItem } : null,
       completedItems: this.completedItems,
       totalItems: this.totalItems,
@@ -162,12 +166,17 @@ class ResonovaPlayer {
   async _resumePlayback(state) {
     this._episodeId = state.episodeId;
 
-    // Rebuild queue: currentItem first (it may have been partially played), then rest
-    const queue = state.currentItem
-      ? [state.currentItem, ...state.queue]
-      : [...state.queue];
+    const timeline = Array.isArray(state.playbackTimeline)
+      ? [...state.playbackTimeline]
+      : [
+          ...(Array.isArray(state.playedItems) ? state.playedItems : []),
+          ...(state.currentItem ? [state.currentItem] : []),
+          ...state.queue,
+        ];
+    const startIndex = Math.max(0, state.currentIndex ?? (state.playedItems?.length || 0));
+    const queue = timeline.slice(startIndex);
 
-    this._startPlayback(queue);
+    this._startPlayback(queue, { timeline });
     this.playedItems = Array.isArray(state.playedItems) ? [...state.playedItems] : [];
 
     // Mark completedItems as already passed (minus current item)
@@ -447,8 +456,12 @@ class ResonovaPlayer {
     // Each track's commentary arrives as it finishes — append to live queue
     es.addEventListener('track_ready', (e) => {
       const { commentary_url, track_uri, total } = JSON.parse(e.data);
-      this.queue.push({ type: 'audio', url: commentary_url });
-      this.queue.push({ type: 'spotify', uri: track_uri });
+      const commentaryItem = { type: 'audio', url: commentary_url };
+      const spotifyItem = { type: 'spotify', uri: track_uri };
+      this.queue.push(commentaryItem);
+      this.queue.push(spotifyItem);
+      this.playbackTimeline.push(commentaryItem);
+      this.playbackTimeline.push(spotifyItem);
       // intro (1) + N tracks × 2 items each
       this.totalItems = 1 + total * 2;
       this._updateProgress();
@@ -459,7 +472,9 @@ class ResonovaPlayer {
     // Outro arrives after the last track — append to the live queue
     es.addEventListener('outro_ready', (e) => {
       const { url } = JSON.parse(e.data);
-      this.queue.push({ type: 'audio', url });
+      const outroItem = { type: 'audio', url };
+      this.queue.push(outroItem);
+      this.playbackTimeline.push(outroItem);
       this.totalItems += 1;
       this._updateProgress();
       this._updateSkipButton();
@@ -489,9 +504,11 @@ class ResonovaPlayer {
   // Playback queue
   // ──────────────────────────────────────────────
 
-  _startPlayback(queue) {
+  _startPlayback(queue, options = {}) {
     this.queue          = [...queue];
     this.playedItems    = [];
+    this.playbackTimeline = options.timeline ? [...options.timeline] : [...queue];
+    this.currentIndex   = -1;
     this.totalItems     = queue.length;
     this.completedItems = 0;
     this._showState('playing');
@@ -520,6 +537,12 @@ class ResonovaPlayer {
 
     const item = this.queue.shift();
     this.currentItem    = item;
+    let timelineIndex = this.playbackTimeline.indexOf(item);
+    if (timelineIndex === -1) {
+      this.playbackTimeline.push(item);
+      timelineIndex = this.playbackTimeline.length - 1;
+    }
+    this.currentIndex = timelineIndex;
     this._trackEndFired = false;
     // Clear any pending segment deadline (item is changing)
     if (this._segmentDeadline) {
@@ -941,7 +964,7 @@ class ResonovaPlayer {
     const btn = document.getElementById('skip-btn');
     btn.disabled = blocked;
     const prevBtn = document.getElementById('prev-btn');
-    if (prevBtn) prevBtn.disabled = !this.currentItem || this.playedItems.length === 0;
+    if (prevBtn) prevBtn.disabled = !this.currentItem || this.currentIndex <= 0;
   }
 
   _updateProgressStep(step, message) {
@@ -1034,7 +1057,7 @@ class ResonovaPlayer {
   }
 
   previous() {
-    if (!this.currentItem || this.playedItems.length === 0) return;
+    if (!this.currentItem || this.currentIndex <= 0) return;
 
     if (this._segmentDeadline) {
       clearTimeout(this._segmentDeadline);
@@ -1050,11 +1073,15 @@ class ResonovaPlayer {
       this.spotifyPlayer?.pause();
     }
 
-    const previousItem = this.playedItems.pop();
-    this.queue.unshift(this.currentItem);
+    const previousIndex = this.currentIndex - 1;
+    const previousItem = this.playbackTimeline[previousIndex];
+    if (!previousItem) return;
+
+    this.playedItems.pop();
+    this.queue = this.playbackTimeline.slice(previousIndex);
     this.currentItem = null;
-    this.completedItems = Math.max(0, this.completedItems - 2);
-    this.queue.unshift(previousItem);
+    this.currentIndex = previousIndex - 1;
+    this.completedItems = Math.max(0, previousIndex);
     this._trackEndFired = false;
     this._playNext();
   }
