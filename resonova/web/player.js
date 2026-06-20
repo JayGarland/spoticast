@@ -964,7 +964,15 @@ class ResonovaPlayer {
     const btn = document.getElementById('skip-btn');
     btn.disabled = blocked;
     const prevBtn = document.getElementById('prev-btn');
-    if (prevBtn) prevBtn.disabled = !this.currentItem || this.currentIndex <= 0;
+    if (prevBtn) {
+      const hasPrevious = this._hasPreviousSegment();
+      prevBtn.setAttribute('aria-disabled', hasPrevious ? 'false' : 'true');
+      prevBtn.title = hasPrevious ? 'Go to previous segment' : 'No previous segment yet';
+    }
+  }
+
+  _hasPreviousSegment() {
+    return !!this.currentItem && (this.currentIndex > 0 || this.playedItems.length > 0);
   }
 
   _updateProgressStep(step, message) {
@@ -1057,7 +1065,7 @@ class ResonovaPlayer {
   }
 
   previous() {
-    if (!this.currentItem || this.currentIndex <= 0) return;
+    if (!this._hasPreviousSegment()) return;
 
     if (this._segmentDeadline) {
       clearTimeout(this._segmentDeadline);
@@ -1073,15 +1081,22 @@ class ResonovaPlayer {
       this.spotifyPlayer?.pause();
     }
 
-    const previousIndex = this.currentIndex - 1;
-    const previousItem = this.playbackTimeline[previousIndex];
+    const fallbackItem = this.playedItems[this.playedItems.length - 1];
+    let previousIndex = this.currentIndex > 0
+      ? this.currentIndex - 1
+      : this.playbackTimeline.indexOf(fallbackItem);
+    const previousItem = previousIndex >= 0
+      ? this.playbackTimeline[previousIndex]
+      : fallbackItem;
     if (!previousItem) return;
 
     this.playedItems.pop();
-    this.queue = this.playbackTimeline.slice(previousIndex);
+    this.queue = previousIndex >= 0
+      ? this.playbackTimeline.slice(previousIndex)
+      : [previousItem, this.currentItem, ...this.queue];
     this.currentItem = null;
     this.currentIndex = previousIndex - 1;
-    this.completedItems = Math.max(0, previousIndex);
+    this.completedItems = Math.max(0, previousIndex >= 0 ? previousIndex : this.completedItems - 2);
     this._trackEndFired = false;
     this._playNext();
   }

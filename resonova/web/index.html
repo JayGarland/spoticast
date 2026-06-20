@@ -293,7 +293,7 @@
 
       <!-- Playback controls -->
       <div class="playback-controls">
-        <button class="skip-btn" id="prev-btn" title="Go to previous segment" disabled>
+        <button class="skip-btn" id="prev-btn" title="No previous segment yet" aria-disabled="true">
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
             <rect x="3.5" y="4" width="2.5" height="12" rx="1" fill="currentColor"/>
             <path d="M16 4l-8 6 8 6V4z" fill="currentColor"/>
@@ -330,7 +330,7 @@
   <!-- Hidden audio element for commentary playback -->
   <audio id="resonova-audio" preload="auto"></audio>
 
-  <script src="/web/player.js"></script>
+  <script src="/web/player.js?v=20260620-previous-control"></script>
 
 </body>
 </html>
