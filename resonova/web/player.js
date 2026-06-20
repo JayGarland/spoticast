@@ -778,14 +778,14 @@ class ResonovaPlayer {
   }
 
   async _transferPlayback(deviceId, token) {
-    const res = await fetch('https://api.spotify.com/v1/me/player', {
+    const res = await this._fetchWithTimeout('https://api.spotify.com/v1/me/player', {
       method: 'PUT',
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ device_ids: [deviceId], play: false }),
-    });
+    }, 8000);
     if (!res.ok) {
       let detail = '';
       try { detail = await res.text(); } catch (_) { }
@@ -797,9 +797,9 @@ class ResonovaPlayer {
     const started = Date.now();
     while (Date.now() - started < timeoutMs) {
       try {
-        const res = await fetch('https://api.spotify.com/v1/me/player/devices', {
+        const res = await this._fetchWithTimeout('https://api.spotify.com/v1/me/player/devices', {
           headers: { 'Authorization': `Bearer ${token}` },
-        });
+        }, 1500);
         if (res.ok) {
           const data = await res.json();
           const visible = (data.devices || []).some(device => device.id === deviceId);
@@ -820,14 +820,14 @@ class ResonovaPlayer {
       this._obsRecord('play:cmd:fail', `404:device-not-visible`);
       throw err;
     }
-    const res = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${this.deviceId}`, {
+    const res = await this._fetchWithTimeout(`https://api.spotify.com/v1/me/player/play?device_id=${this.deviceId}`, {
       method: 'PUT',
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ uris: [uri] }),
-    });
+    }, 8000);
     if (!res.ok) {
       let detail = '';
       try { detail = await res.text(); } catch (_) { }
@@ -1080,6 +1080,8 @@ class ResonovaPlayer {
     this._isPaused = false;
     this._updatePlayPauseButton();
     this._setSegmentType('spotify');
+    this._setNowPlaying(item.name || 'Spotify music', item.artist || 'Connecting to Spotify...');
+    document.getElementById('next-up').textContent = '';
 
     document.getElementById('waveform').classList.add('spotify-mode');
     document.getElementById('waveform').classList.remove('paused');
@@ -1118,9 +1120,9 @@ class ResonovaPlayer {
     } else {
       try {
         const trackId = item.uri.split(':')[2];
-        const trackRes = await fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
+        const trackRes = await this._fetchWithTimeout(`https://api.spotify.com/v1/tracks/${trackId}`, {
           headers: { 'Authorization': `Bearer ${token}` },
-        });
+        }, 8000);
         if (trackRes.ok) {
           const trackData = await trackRes.json();
           const artist = trackData.artists.map(a => a.name).join(', ');
@@ -1135,7 +1137,9 @@ class ResonovaPlayer {
           });
           document.getElementById('next-up').textContent = '';
         }
-      } catch (_) { }
+      } catch (err) {
+        this._obsRecord('track:metadata:fail', err?.name === 'AbortError' ? 'timeout' : 'network');
+      }
     }
 
     try {
@@ -1837,7 +1841,7 @@ class ResonovaPlayer {
   async _apiFetch(url, options = {}) {
     let res;
     try {
-      res = await fetch(url, options);
+      res = await this._fetchWithTimeout(url, options, 12000);
     } catch (netErr) {
       const kind = !navigator.onLine ? 'offline' : 'network';
       if (url.startsWith('/')) this._updateNetworkStatus(kind);
@@ -1855,6 +1859,16 @@ class ResonovaPlayer {
     }
     if (url.startsWith('/')) this._clearNetworkStatus();
     return res.json();
+  }
+
+  async _fetchWithTimeout(url, options = {}, timeoutMs = 10000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(url, { ...options, signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   // ──────────────────────────────────────────────
