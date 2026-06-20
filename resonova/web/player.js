@@ -160,6 +160,8 @@ class ResonovaPlayer {
         }
 
         if (!deviceId) throw new Error('Spotify device did not become ready');
+        const connectReady = await this._waitForSpotifyConnectDevice(token, deviceId, 5000);
+        if (!connectReady) throw new Error('Spotify device is ready in SDK but not visible to Spotify Connect');
 
         await this._transferPlayback(deviceId, token);
 
@@ -729,7 +731,31 @@ class ResonovaPlayer {
     }
   }
 
+  async _waitForSpotifyConnectDevice(token, deviceId, timeoutMs = 5000) {
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+      try {
+        const res = await fetch('https://api.spotify.com/v1/me/player/devices', {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const visible = (data.devices || []).some(device => device.id === deviceId);
+          if (visible) return true;
+        }
+      } catch (_) { }
+      await new Promise(resolve => setTimeout(resolve, 350));
+    }
+    return false;
+  }
+
   async _sendSpotifyPlayCommand(token, uri) {
+    const visible = await this._waitForSpotifyConnectDevice(token, this.deviceId, 5000);
+    if (!visible) {
+      const err = new Error('Spotify device is not visible in Connect devices');
+      err.status = 404;
+      throw err;
+    }
     const res = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${this.deviceId}`, {
       method: 'PUT',
       headers: {
@@ -1052,7 +1078,7 @@ class ResonovaPlayer {
         this._markSpotifyUnhealthy('not_ready', err.message || 'Spotify device did not start playback');
         this._discardSpotifyDevice(err.message || 'playback did not start');
         const recovered = await this._recoverSpotifySession();
-        if (!recovered) throw err;
+        if (!recovered) throw new Error('Spotify device could not be registered with Spotify Connect after recovery');
         const { token: freshToken } = await this._apiFetch('/auth/token');
         await this._sendSpotifyPlayCommand(freshToken, item.uri);
         const retryStarted = await this._waitForSpotifyPlaybackStart(item.uri, 5000);
