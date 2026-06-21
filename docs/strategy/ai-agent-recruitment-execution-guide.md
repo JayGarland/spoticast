@@ -186,11 +186,12 @@ Fail signals:
 - Ignores Resonova's product goal.
 - Requires too much boss prompting.
 
-### Backup Chef Trial
+### Chef / Backup Chef Trial
 
 Goal:
 
-- Test whether the candidate can operate above manager level.
+- Test whether the candidate can operate the Chef role above manager level.
+- The same trial shape can be used for a backup-chef candidate, but the job being tested is still chef-level work.
 
 Trial packet should include:
 
@@ -284,13 +285,13 @@ Fail signals:
 - Adds speculative loops or architecture changes.
 - Requires chef to salvage most of the patch.
 
-## Backup Chef Candidate Evaluation
+## Chef / Backup Chef Candidate Evaluation
 
 Current state:
 
 - Candidates are not finalized.
-- Backup chef should not be a web-UI-only agent.
-- The backup chef should be CLI-capable or otherwise able to inspect repo, diffs, handoffs, and validation evidence.
+- Chef and backup-chef candidates should not be web-UI-only agents when the job requires repo gating.
+- A chef-level candidate should be CLI-capable or otherwise able to inspect repo, diffs, handoffs, and validation evidence.
 
 Evaluation order should be decided by availability and tool fit.
 
@@ -301,13 +302,13 @@ Candidate categories to consider:
 - Agents that can run shell commands and inspect git state.
 - Agents that can call or supervise manager agents.
 
-Do not prioritize:
+Do not prioritize for chef-level repo-gating work:
 
-- Web-UI-only agents for backup chef.
+- Web-UI-only agents.
 - Agents that cannot inspect local files or diffs.
 - Agents that are strong at discussion but weak at gate review.
 
-Minimum backup chef trial:
+Minimum chef-level trial:
 
 1. Give candidate a manager handoff and dirty diff.
 2. Ask for gate decision.

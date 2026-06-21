@@ -8,6 +8,13 @@ This document records the current company-level operating model for Resonova's A
 
 The company does not treat a specific platform or model as the permanent holder of a role. A role is fixed by job responsibility; the AI agent assigned to that role can change over time.
 
+Agents do not need to care whether a role holder comes from Codex, Claude, Gemini, another CLI, or another model/vendor. Agents should care about the role, authority, tool access, evidence quality, and current assignment.
+
+Tool form still matters:
+
+- Workspace/CLI-capable agents can inspect the local repo, git state, diffs, handoffs, tests, and local files directly.
+- Web-UI agents may be useful for higher-level discussion, product thinking, review, or specialist critique, but they normally need supplied context or Chrome/MCP-style coordination because they do not automatically have local repo access.
+
 ## Current Company Roles
 
 ### Boss / CEO
@@ -32,7 +39,7 @@ Notes:
 
 ### Chef
 
-Current holder: Codex in this session. This is not a permanent binding.
+Current holder: the active chef-role agent chosen by the boss. This is a role assignment, not a platform or model identity.
 
 Responsibilities:
 
@@ -374,13 +381,13 @@ Budget should influence:
 - Whether to use a web UI discussion or a CLI worker.
 - Whether repeated failure should lead to firing/replacement.
 - Which model tier is used for a manager task.
-- Whether Codex remains the active chef for the current period.
-- Whether a backup chef should be used when Codex budget is exceeded.
+- Whether the active chef-role holder remains the right fit for the current period.
+- Whether a backup chef should be used when the active chef is unavailable, over budget, or not the best fit.
 
 Current chef staffing note:
 
-- Codex is the current chef-role holder.
-- The boss wants to consider a backup chef for periods when Codex budget is exceeded.
+- The active chef-role holder is chosen by the boss and may change over time.
+- The boss wants to consider a backup chef for periods when the active chef is unavailable, over budget, or not the best fit.
 - Backup chef candidates are not finalized in this document.
 - Backup chef candidates should not be web-UI agents.
 
