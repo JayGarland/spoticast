@@ -2,10 +2,114 @@
 
 from __future__ import annotations
 
+import re
+
 from google import genai
 from google.genai import types
 
 from resonova.config import settings
+
+
+# ---------------------------------------------------------------------------
+# Quota error classification
+# ---------------------------------------------------------------------------
+
+class GeminiTTSQuotaError(Exception):
+    """Raised when Gemini TTS returns a 429 / RESOURCE_EXHAUSTED quota error."""
+
+    def __init__(self, code: str, model: str, retry_after_seconds: int | None, message: str):
+        super().__init__(message)
+        self.code = code
+        self.model = model
+        self.retry_after_seconds = retry_after_seconds
+        self.quota_message = message
+
+
+def format_duration(seconds: int) -> str:
+    """Format a duration in seconds as a human-readable string."""
+    if seconds < 60:
+        return f"{seconds}s"
+    minutes = seconds // 60
+    if minutes < 60:
+        return f"{minutes}m"
+    hours = minutes // 60
+    mins = minutes % 60
+    if mins == 0:
+        return f"{hours}h"
+    return f"{hours}h {mins}m"
+
+
+def _parse_quota_error(exc: Exception) -> dict | None:
+    """
+    Classify a Gemini API exception.
+
+    Returns a structured dict if the exception is a TTS quota exhaustion error
+    (RESOURCE_EXHAUSTED / 429 / QuotaFailure), or None for unrelated errors.
+    """
+    exc_str = str(exc)
+    exc_type = type(exc).__name__
+
+    # status_code attribute (google-genai ClientError) or gRPC code
+    status_code = getattr(exc, "status_code", None) or getattr(exc, "code", None)
+    http_code = getattr(exc, "http_status", None)
+
+    is_quota = (
+        "RESOURCE_EXHAUSTED" in exc_str
+        or "ResourceExhausted" in exc_type
+        or "QuotaFailure" in exc_str
+        or status_code == 429
+        or http_code == 429
+        or exc_str[:60].startswith("429")
+    )
+
+    if not is_quota:
+        return None
+
+    # Parse retry delay — REST API returns "retryDelay": "31678s" in JSON details
+    retry_after_seconds: int | None = None
+    m = re.search(r"['\"]retryDelay['\"]\s*:\s*['\"](\d+)s['\"]", exc_str)
+    if m:
+        retry_after_seconds = int(m.group(1))
+    else:
+        # Plain-text fallbacks: "retryDelay ~= 8h47m" or "Please retry in 8h47m58s"
+        m = re.search(r"(?:retryDelay|retry in)[^0-9\n]*?(\d+)h(\d+)m", exc_str, re.IGNORECASE)
+        if m:
+            retry_after_seconds = int(m.group(1)) * 3600 + int(m.group(2)) * 60
+        else:
+            m = re.search(r"(?:retryDelay|retry in)[^0-9\n]*?(\d+)s\b", exc_str, re.IGNORECASE)
+            if m:
+                retry_after_seconds = int(m.group(1))
+
+    # Try to extract the exact model name from the error body
+    model = settings.gemini_tts_model
+    m_model = re.search(r'"model"\s*:\s*"([^"]+)"', exc_str)
+    if not m_model:
+        m_model = re.search(r"'model'\s*:\s*'([^']+)'", exc_str)
+    if not m_model:
+        m_model = re.search(r"\bmodel[:\s]+([a-z0-9\-\.]+tts[a-z0-9\-\.]*)", exc_str, re.IGNORECASE)
+    if m_model:
+        model = m_model.group(1)
+
+    if retry_after_seconds is not None:
+        wait_str = format_duration(retry_after_seconds)
+        message = (
+            f"Generation paused: Gemini TTS quota exhausted (model: {model}). "
+            f"Retry after about {wait_str}. "
+            f"Generated segments so far are saved."
+        )
+    else:
+        message = (
+            f"Generation paused: Gemini TTS quota exhausted (model: {model}). "
+            f"The daily limit has been reached — try again later. "
+            f"Generated segments so far are saved."
+        )
+
+    return {
+        "code": "tts_quota_exhausted",
+        "model": model,
+        "retry_after_seconds": retry_after_seconds,
+        "message": message,
+    }
 
 # Speaker name and voice for each host role.
 # Charon (Informative) suits the analytical HOST_A; Aoede (Breezy) fits the intuitive HOST_B.
@@ -80,17 +184,23 @@ async def synthesize_dialogue(lines: list[dict]) -> bytes:
     ]
 
     client = _new_client()
-    response = await client.aio.models.generate_content(
-        model=settings.gemini_tts_model,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            response_modalities=["AUDIO"],
-            speech_config=types.SpeechConfig(
-                multi_speaker_voice_config=types.MultiSpeakerVoiceConfig(
-                    speaker_voice_configs=speaker_voice_configs,
+    try:
+        response = await client.aio.models.generate_content(
+            model=settings.gemini_tts_model,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_modalities=["AUDIO"],
+                speech_config=types.SpeechConfig(
+                    multi_speaker_voice_config=types.MultiSpeakerVoiceConfig(
+                        speaker_voice_configs=speaker_voice_configs,
+                    ),
                 ),
             ),
-        ),
-    )
+        )
+    except Exception as exc:
+        quota_info = _parse_quota_error(exc)
+        if quota_info:
+            raise GeminiTTSQuotaError(**quota_info) from exc
+        raise
 
     return response.candidates[0].content.parts[0].inline_data.data

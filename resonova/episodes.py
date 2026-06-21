@@ -39,12 +39,14 @@ def save_episode(
     queue: list[dict],
     order_fingerprint: str | None = None,
     track_order_preview: list[str] | None = None,
+    status: str = "complete",
 ) -> None:
     """
     Persist episode metadata.
 
     order_fingerprint  — 8-char hash of the selected track URI order (playlist episodes only).
     track_order_preview — first few "Artist – Track" strings for UI distinction (optional).
+    status             — "complete" for finished episodes; "quota_failed" for partial saves.
     """
     _ensure_dir()
     meta: dict = {
@@ -54,6 +56,7 @@ def save_episode(
         "playlist_name": playlist_name,
         "track_count": track_count,
         "created_at": datetime.now(timezone.utc).isoformat(),
+        "status": status,
         "queue": queue,
     }
     if order_fingerprint is not None:
@@ -89,6 +92,7 @@ def list_episodes() -> list[dict]:
             "created_at": meta["created_at"],
             "order_fingerprint": meta.get("order_fingerprint"),
             "track_order_preview": meta.get("track_order_preview"),
+            "status": meta.get("status", "complete"),
         })
 
     episodes.sort(key=lambda e: e["created_at"], reverse=True)
@@ -146,6 +150,7 @@ def rename_episode(episode_id: str, new_name: str) -> dict | None:
         "created_at": meta["created_at"],
         "order_fingerprint": meta.get("order_fingerprint"),
         "track_order_preview": meta.get("track_order_preview"),
+        "status": meta.get("status", "complete"),
     }
 
 

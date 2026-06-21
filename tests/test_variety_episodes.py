@@ -50,6 +50,10 @@ def _run_tests() -> None:
         _test_run_number(episodes)
         _test_episode_path_traversal_rejected(episodes)
         _test_server_track_ready_metadata_shape()
+        _test_quota_error_classification()
+        _test_retry_after_formatting()
+        _test_failed_episode_save(episodes)
+        _test_cooldown_guard_in_server()
 
     print("All tests passed ✓")
 
@@ -279,6 +283,151 @@ def _test_server_track_ready_metadata_shape():
     assert '"duration_ms": track_meta.duration_ms' in src, "track_ready should include duration"
     assert "saved_queue.append(spotify_item)" in src, "saved episodes should persist Spotify metadata"
     print("  server_track_ready_metadata_shape ✓")
+
+
+def _test_quota_error_classification():
+    """_parse_quota_error should detect RESOURCE_EXHAUSTED / 429 and return structured dict."""
+    from resonova.api.tts import _parse_quota_error
+
+    # Simulate API JSON error message with retryDelay
+    exc_with_delay = Exception(
+        '429 RESOURCE_EXHAUSTED Quota exceeded for metric: '
+        'generativelanguage.googleapis.com/generate_requests_per_model_per_day '
+        '"retryDelay": "31678s" "model": "gemini-3.1-flash-tts-preview"'
+    )
+    result = _parse_quota_error(exc_with_delay)
+    assert result is not None, "Should detect RESOURCE_EXHAUSTED"
+    assert result["code"] == "tts_quota_exhausted"
+    assert result["retry_after_seconds"] == 31678
+    assert "quota" in result["message"].lower()
+
+    # Simulate the Python dict-style error shape seen in the customer report
+    exc_reported = Exception(
+        "429 RESOURCE_EXHAUSTED. {'error': {'message': 'Please retry in 8h47m58.5s.', "
+        "'details': [{'@type': 'type.googleapis.com/google.rpc.RetryInfo', "
+        "'retryDelay': '31678s'}], 'quotaDimensions': {'model': 'gemini-3.1-flash-tts'}}}"
+    )
+    reported = _parse_quota_error(exc_reported)
+    assert reported is not None, "Should detect Python dict-style RESOURCE_EXHAUSTED"
+    assert reported["retry_after_seconds"] == 31678
+    assert reported["model"] == "gemini-3.1-flash-tts"
+
+    # Simulate error with plain-text retryDelay
+    exc_plain = Exception("429 RESOURCE_EXHAUSTED retryDelay ~= 8h47m")
+    result2 = _parse_quota_error(exc_plain)
+    assert result2 is not None
+    expected_secs = 8 * 3600 + 47 * 60
+    assert result2["retry_after_seconds"] == expected_secs, (
+        f"Expected {expected_secs}s, got {result2['retry_after_seconds']}"
+    )
+
+    # Unrelated error should return None
+    exc_unrelated = Exception("503 Service Unavailable")
+    assert _parse_quota_error(exc_unrelated) is None, "Non-quota error should return None"
+
+    # ResourceExhausted in exception type name
+    class FakeResourceExhausted(Exception):
+        pass
+    FakeResourceExhausted.__name__ = "ResourceExhausted"
+    exc_type = FakeResourceExhausted("quota limit hit")
+    assert _parse_quota_error(exc_type) is not None, "ResourceExhausted class name should be detected"
+
+    print("  quota_error_classification ✓")
+
+
+def _test_retry_after_formatting():
+    """format_duration should produce human-readable strings."""
+    from resonova.api.tts import format_duration
+
+    assert format_duration(0) == "0s"
+    assert format_duration(45) == "45s"
+    assert format_duration(60) == "1m"
+    assert format_duration(90) == "1m"
+    assert format_duration(3600) == "1h"
+    assert format_duration(31678) == "8h 47m"
+    assert format_duration(7200) == "2h"
+    assert format_duration(7260) == "2h 1m"
+    print("  retry_after_formatting ✓")
+
+
+def _test_failed_episode_save(episodes):
+    """save_episode with status='quota_failed' must not appear as complete."""
+    ep_id = "quota-ep-001"
+    queue = [{"type": "audio", "url": "/audio/episodes/quota-ep-001/intro.mp3"}]
+    episodes.save_episode(
+        episode_id=ep_id,
+        name="Incomplete Cast",
+        playlist_uri="spotify:playlist:xyz",
+        playlist_name="My Playlist",
+        track_count=5,
+        queue=queue,
+        status="quota_failed",
+    )
+
+    # Raw metadata should have status field
+    ep = episodes.get_episode(ep_id)
+    assert ep is not None
+    assert ep.get("status") == "quota_failed", f"Expected 'quota_failed', got {ep.get('status')}"
+    assert ep["queue"] == queue
+
+    # list_episodes must expose the status field
+    lst = episodes.list_episodes()
+    found = next((e for e in lst if e["id"] == ep_id), None)
+    assert found is not None, "Quota-failed episode must appear in list"
+    assert found.get("status") == "quota_failed", "list_episodes must expose status"
+
+    # Rename must preserve status
+    updated = episodes.rename_episode(ep_id, "Renamed Incomplete")
+    assert updated is not None
+    assert updated.get("status") == "quota_failed", "rename must not clear status"
+
+    # Normal complete episode must default to 'complete'
+    episodes.save_episode(
+        episode_id="complete-ep-001",
+        name="Full Cast",
+        playlist_uri="spotify:playlist:xyz",
+        playlist_name="My Playlist",
+        track_count=5,
+        queue=[],
+    )
+    complete_ep = episodes.get_episode("complete-ep-001")
+    assert complete_ep.get("status") == "complete", "Default status must be 'complete'"
+
+    # Clean up
+    episodes.delete_episode(ep_id)
+    episodes.delete_episode("complete-ep-001")
+    print("  failed_episode_save ✓")
+
+
+def _test_cooldown_guard_in_server():
+    """Server module must have cooldown guard functions and GeminiTTSQuotaError catch."""
+    import inspect
+    import resonova.server as server_mod
+
+    # GeminiTTSQuotaError must be imported
+    assert hasattr(server_mod, "GeminiTTSQuotaError"), "GeminiTTSQuotaError must be importable from server"
+
+    # Cooldown functions must exist
+    assert hasattr(server_mod, "_get_tts_cooldown"), "_get_tts_cooldown must exist"
+    assert hasattr(server_mod, "_set_tts_cooldown"), "_set_tts_cooldown must exist"
+    server_mod._set_tts_cooldown(60, "gemini-3.1-flash-tts")
+    cooldown = server_mod._get_tts_cooldown()
+    assert cooldown is not None
+    assert cooldown["model"] == "gemini-3.1-flash-tts"
+
+    # _run_generation must handle GeminiTTSQuotaError
+    src = inspect.getsource(server_mod._run_generation)
+    assert "GeminiTTSQuotaError" in src, "_run_generation must catch GeminiTTSQuotaError"
+    assert "_set_tts_cooldown" in src, "_run_generation must call _set_tts_cooldown"
+    assert "status=\"quota_failed\"" in src or "status='quota_failed'" in src, (
+        "_run_generation must save episode with status='quota_failed'"
+    )
+
+    # generate route must check cooldown
+    src_gen = inspect.getsource(server_mod.generate)
+    assert "_get_tts_cooldown" in src_gen, "generate route must check cooldown"
+
+    print("  cooldown_guard_in_server ✓")
 
 
 if __name__ == "__main__":

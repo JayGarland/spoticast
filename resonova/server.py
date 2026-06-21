@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 try:
     from uuid import uuid7  # type: ignore[attr-defined]  # Python 3.14+
 except ImportError:
@@ -29,6 +30,7 @@ from resonova.api import lastfm as lastfm_api
 from resonova.api import research as research_api
 from resonova.api import spotify as spotify_api
 from resonova.api import tts as tts_api
+from resonova.api.tts import GeminiTTSQuotaError
 
 app = FastAPI(title="Resonova")
 
@@ -98,6 +100,40 @@ def _format_generation_error(exc: Exception) -> str:
         return f"Spotify request failed ({status}): {reason}"
 
     return str(exc)
+
+
+# ---------------------------------------------------------------------------
+# TTS quota cooldown guard (in-process, survives job restarts within a session)
+# ---------------------------------------------------------------------------
+
+_tts_cooldown_until: float = 0.0  # Unix timestamp; 0.0 = no active cooldown
+_tts_cooldown_model: str | None = None
+
+
+def _get_tts_cooldown() -> dict | None:
+    """Return cooldown info if the quota cooldown is still active, else None."""
+    remaining = int(_tts_cooldown_until - time.time())
+    if remaining > 0:
+        wait_str = tts_api.format_duration(remaining)
+        return {
+            "code": "tts_quota_exhausted",
+            "model": _tts_cooldown_model,
+            "retry_after_seconds": remaining,
+            "message": (
+                f"Gemini TTS quota is still cooling down. "
+                f"Try again in about {wait_str}."
+            ),
+        }
+    return None
+
+
+def _set_tts_cooldown(retry_after_seconds: int | None, model: str | None = None) -> None:
+    """Record a cooldown expiry time. Falls back to 1 hour when delay is unknown."""
+    global _tts_cooldown_until, _tts_cooldown_model
+    secs = retry_after_seconds if (retry_after_seconds and retry_after_seconds > 0) else 3600
+    _tts_cooldown_until = time.time() + secs
+    _tts_cooldown_model = model
+    logger.info("TTS quota cooldown set: %.0fs (until %s)", secs, _tts_cooldown_until)
 
 
 def _select_playlist_tracks_for_episode(tracks: list[Any], playlist_uri: str) -> list[Any]:
@@ -205,6 +241,15 @@ async def api_episodes():
     return JSONResponse({"episodes": episodes_store.list_episodes()})
 
 
+@app.get("/api/tts-cooldown")
+async def api_tts_cooldown():
+    """Report active TTS quota cooldown so the client can block immediate retries."""
+    info = _get_tts_cooldown()
+    if info:
+        return JSONResponse({"active": True, **info})
+    return JSONResponse({"active": False})
+
+
 @app.get("/api/episodes/{episode_id}")
 async def api_episode(episode_id: str):
     try:
@@ -254,6 +299,11 @@ async def generate(req: GenerateRequest):
         raise HTTPException(status_code=401, detail="Not authenticated")
     if not req.playlist_uri and not req.track_uris:
         raise HTTPException(status_code=400, detail="Provide playlist_uri or track_uris")
+
+    # Block immediate retries while a quota cooldown is known
+    cooldown = _get_tts_cooldown()
+    if cooldown:
+        raise HTTPException(status_code=429, detail=cooldown)
 
     job_id = str(uuid7())
     source = req.playlist_uri or "track_list"
@@ -389,6 +439,7 @@ async def _run_generation(job: Job):
         ep_dir = episodes_store.episode_audio_dir(episode_id)
         saved_queue: list[dict] = []
         tracks_by_uri = {t.uri: t for t in tracks}
+        total_tracks = len(script["tracks"])
 
         # --- Synthesize intro, then start streaming immediately ---
         intro_file = f"{ep_dir}/intro.mp3"
@@ -400,7 +451,6 @@ async def _run_generation(job: Job):
         job.push("intro_ready", {"url": f"/audio/{intro_file}", "episode_name": episode_name})
 
         # --- Synthesize per-track commentary, streaming each as it finishes ---
-        total_tracks = len(script["tracks"])
         for i, track_script in enumerate(script["tracks"]):
             job.push("progress", {
                 "step": "tts",
@@ -468,6 +518,37 @@ async def _run_generation(job: Job):
 
         job.push("done", {"episode_id": episode_id, "episode_name": episode_name})
         job.status = "done"
+
+    except GeminiTTSQuotaError as exc:
+        job.status = "error"
+        job.error = str(exc)
+        _set_tts_cooldown(exc.retry_after_seconds, exc.model)
+        # Preserve partial progress so the user can see the cast was attempted
+        if saved_queue:
+            try:
+                episodes_store.save_episode(
+                    episode_id=episode_id,
+                    name=episode_name,
+                    playlist_uri=job.playlist_uri,
+                    playlist_name=job.playlist_name,
+                    track_count=total_tracks,
+                    queue=saved_queue,
+                    order_fingerprint=_order_fingerprint,
+                    track_order_preview=_track_order_preview,
+                    status="quota_failed",
+                )
+            except Exception as save_exc:
+                logger.warning("Failed to save partial episode %s: %s", job.job_id, save_exc)
+        job.push("error", {
+            "code": exc.code,
+            "model": exc.model,
+            "retry_after_seconds": exc.retry_after_seconds,
+            "message": exc.quota_message,
+        })
+        logger.error(
+            "TTS quota exhausted for job %s (model=%s, retry_after=%ss)",
+            job.job_id, exc.model, exc.retry_after_seconds,
+        )
 
     except Exception as exc:
         job.status = "error"

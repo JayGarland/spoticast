@@ -1002,6 +1002,25 @@ class ResonovaPlayer {
       return;
     }
 
+    // Client-side quota cooldown guard — blocks immediate retries without a server round-trip
+    try {
+      const raw = localStorage.getItem('resonova:tts-cooldown');
+      if (raw) {
+        const cd = JSON.parse(raw);
+        if (cd.until && Date.now() < cd.until) {
+          const remaining = Math.ceil((cd.until - Date.now()) / 1000);
+          this._showQuotaError({
+            code: 'tts_quota_exhausted',
+            model: cd.model || '',
+            retry_after_seconds: remaining,
+            message: cd.message || 'Gemini TTS quota is still cooling down.',
+          });
+          return;
+        }
+        localStorage.removeItem('resonova:tts-cooldown');
+      }
+    } catch (_) { }
+
     this._pushHistoryState('generating');
     this._showState('generating');
 
@@ -1021,7 +1040,12 @@ class ResonovaPlayer {
       this._episodesNeedRefresh = true;
     } catch (err) {
       this._showState('connected');
-      this._showError('Failed to start generation: ' + err.message);
+      // Server-side cooldown: 429 with structured quota detail
+      if (err.status === 429 && err.body && err.body.detail && err.body.detail.code === 'tts_quota_exhausted') {
+        this._showQuotaError(err.body.detail);
+      } else {
+        this._showError('Failed to start generation: ' + err.message);
+      }
       return;
     }
 
@@ -1096,11 +1120,25 @@ class ResonovaPlayer {
 
     es.addEventListener('error', (e) => {
       es.close();
+      this._clearGenerationSaveCheck();
       this._generationComplete = true;
-      let msg = 'Generation failed.';
-      try { msg = JSON.parse(e.data).message; } catch (_) { }
-      this._showState('connected');
-      this._showError(msg);
+      let errData = {};
+      try { errData = JSON.parse(e.data || '{}'); } catch (_) { }
+      const isQuota = errData.code === 'tts_quota_exhausted';
+      if (isQuota) {
+        // Keep the failed episode visible in the library
+        this._episodesNeedRefresh = true;
+        this._pendingEpisodeFocusId = this._activeGenerationId || null;
+        // Clear active generation card — the saved partial episode takes its place
+        this._activeGenerationId = null;
+        this._activeGenerationName = '';
+        this._activeGenerationSource = '';
+        this._showState('connected');
+        this._showQuotaError(errData);
+      } else {
+        this._showState('connected');
+        this._showError(errData.message || 'Generation failed.');
+      }
     });
   }
 
@@ -1853,6 +1891,10 @@ class ResonovaPlayer {
       ? '<span class="ep-new-badge">New</span>'
       : '';
 
+    const quotaBadge = ep.status === 'quota_failed'
+      ? '<span class="ep-quota-badge">⚠ Incomplete</span>'
+      : '';
+
     const fingerprintBadge = ep.order_fingerprint
       ? `<span class="ep-fingerprint" title="Order fingerprint">${this._esc(ep.order_fingerprint)}</span>`
       : '';
@@ -1867,7 +1909,7 @@ class ResonovaPlayer {
           <div class="episode-card-name">${this._esc(ep.name)}</div>
           <div class="episode-card-meta">
             ${this._esc(ep.playlist_name)} · ${ep.track_count} tracks · ${date} ${time}
-            ${newBadge}${runBadge}${fingerprintBadge}
+            ${newBadge}${runBadge}${quotaBadge}${fingerprintBadge}
           </div>
           ${preview}
         </div>
@@ -2090,6 +2132,54 @@ class ResonovaPlayer {
     setTimeout(() => el.classList.remove('visible'), 6000);
   }
 
+  _showQuotaError(data) {
+    // Remove any existing quota banner so this call is idempotent
+    document.getElementById('quota-error-banner')?.remove();
+
+    const retryStr = data.retry_after_seconds ? this._formatDuration(data.retry_after_seconds) : '';
+
+    // Persist cooldown in localStorage so the next generate() call is blocked client-side
+    if (data.retry_after_seconds && data.retry_after_seconds > 0) {
+      try {
+        localStorage.setItem('resonova:tts-cooldown', JSON.stringify({
+          until: Date.now() + data.retry_after_seconds * 1000,
+          model: data.model || '',
+          message: data.message || '',
+        }));
+      } catch (_) { }
+    }
+
+    const banner = document.createElement('div');
+    banner.id = 'quota-error-banner';
+    banner.className = 'quota-error-banner';
+    banner.innerHTML = `
+      <div class="quota-error-icon">⏸</div>
+      <div class="quota-error-body">
+        <div class="quota-error-title">Generation paused — Gemini TTS quota exhausted</div>
+        ${data.model ? `<div class="quota-error-model">Model: ${this._esc(data.model)}</div>` : ''}
+        ${retryStr ? `<div class="quota-error-retry">Retry after about ${this._esc(retryStr)}</div>` : ''}
+        <div class="quota-error-note">Generated segments so far are saved.</div>
+      </div>
+      <button class="quota-error-dismiss" type="button" aria-label="Dismiss">✕</button>
+    `;
+    banner.querySelector('.quota-error-dismiss').addEventListener('click', () => banner.remove());
+
+    // Insert before the error-msg element inside state-connected
+    const errorEl = document.getElementById('error-msg');
+    if (errorEl && errorEl.parentNode) {
+      errorEl.parentNode.insertBefore(banner, errorEl);
+    }
+  }
+
+  _formatDuration(seconds) {
+    if (seconds < 60) return `${seconds}s`;
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m`;
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return mins === 0 ? `${hours}h` : `${hours}h ${mins}m`;
+  }
+
   _setNowPlaying(title, artist) {
     this._nowPlayingTitle = title;
     this._nowPlayingArtist = artist;
@@ -2220,9 +2310,15 @@ class ResonovaPlayer {
       throw err;
     }
     if (!res.ok) {
-      const err = new Error(`${res.status} ${res.statusText}`);
+      let errBody = null;
+      try { errBody = await res.json(); } catch (_) { }
+      const detail = errBody && errBody.detail;
+      const msg = typeof detail === 'string' ? detail
+        : (detail ? JSON.stringify(detail) : `${res.status} ${res.statusText}`);
+      const err = new Error(msg);
       err.kind = 'http';
       err.status = res.status;
+      err.body = errBody;
       throw err;
     }
     if (url.startsWith('/')) this._clearNetworkStatus();
