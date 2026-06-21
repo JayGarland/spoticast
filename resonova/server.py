@@ -466,8 +466,8 @@ async def _run_generation(job: Job):
         if _playlist_selected_uris and job.playlist_uri:
             variety_store.save_variety_memory(job.playlist_uri, _playlist_selected_uris)
 
-        job.status = "done"
         job.push("done", {"episode_id": episode_id, "episode_name": episode_name})
+        job.status = "done"
 
     except Exception as exc:
         job.status = "error"

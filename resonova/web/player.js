@@ -73,6 +73,7 @@ class ResonovaPlayer {
     this._activeGenerationId = null;
     this._activeGenerationName = '';
     this._activeGenerationSource = '';
+    this._generationSaveCheck = null;
 
     // ── Observability ring buffer (max 50 entries) ─────────────────────────
     this._obsTimeline = [];
@@ -1076,6 +1077,7 @@ class ResonovaPlayer {
       this._updateSkipButton();
       this._saveResumeState();
       this._refreshCurrentGenerationInLibrary();
+      this._scheduleGenerationSaveCheck(jobId);
     });
 
     es.addEventListener('done', (e) => {
@@ -1086,6 +1088,7 @@ class ResonovaPlayer {
       this._pendingEpisodeFocusId = episodeId;
       this._episodesNeedRefresh = true;
       this._generationComplete = true;
+      this._clearGenerationSaveCheck();
       this._updateProgress();
       this._updateSkipButton();
       this._refreshEpisodesAfterGeneration(episodeId);
@@ -1632,6 +1635,39 @@ class ResonovaPlayer {
     } catch (e) {
       console.warn('Failed to cache completed episode detail:', e);
     }
+  }
+
+  _scheduleGenerationSaveCheck(episodeId) {
+    this._clearGenerationSaveCheck();
+    if (!episodeId) return;
+
+    let attempts = 0;
+    this._generationSaveCheck = setInterval(async () => {
+      if (this._generationComplete) {
+        this._clearGenerationSaveCheck();
+        return;
+      }
+
+      attempts++;
+      try {
+        await this._apiFetch(`/api/episodes/${episodeId}`);
+        this._generationComplete = true;
+        this._pendingEpisodeFocusId = episodeId;
+        this._episodesNeedRefresh = true;
+        this._updateProgress();
+        this._updateSkipButton();
+        this._refreshEpisodesAfterGeneration(episodeId);
+        this._clearGenerationSaveCheck();
+      } catch (_) {
+        if (attempts >= 20) this._clearGenerationSaveCheck();
+      }
+    }, 1000);
+  }
+
+  _clearGenerationSaveCheck() {
+    if (!this._generationSaveCheck) return;
+    clearInterval(this._generationSaveCheck);
+    this._generationSaveCheck = null;
   }
 
   _refreshCurrentGenerationInLibrary() {
