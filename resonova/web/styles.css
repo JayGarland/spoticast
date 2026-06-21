@@ -705,6 +705,11 @@ body::after {
   background: var(--accent-low);
 }
 
+.episode-card-new {
+  border-color: var(--accent-mid);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
 .episode-card-main {
   flex: 1;
   min-width: 0;
@@ -734,6 +739,16 @@ body::after {
   background: var(--accent-low);
   color: var(--accent);
   border: 1px solid var(--accent-mid);
+  border-radius: 3px;
+  padding: 0 0.3rem;
+  font-size: 0.5rem;
+  letter-spacing: 0.04em;
+}
+
+.ep-new-badge {
+  background: rgba(59, 255, 138, 0.1);
+  color: #3bff8a;
+  border: 1px solid rgba(59, 255, 138, 0.35);
   border-radius: 3px;
   padding: 0 0.3rem;
   font-size: 0.5rem;

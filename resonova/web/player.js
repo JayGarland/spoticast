@@ -65,6 +65,8 @@ class ResonovaPlayer {
     this._isPaused = false;
     this._nowPlayingTitle = '';
     this._nowPlayingArtist = '';
+    this._pendingEpisodeFocusId = null;
+    this._episodesNeedRefresh = false;
 
     // ── Observability ring buffer (max 50 entries) ─────────────────────────
     this._obsTimeline = [];
@@ -968,13 +970,17 @@ class ResonovaPlayer {
       this._saveResumeState();
     });
 
-    es.addEventListener('done', (_e) => {
+    es.addEventListener('done', (e) => {
       es.close();
+      let doneData = {};
+      try { doneData = JSON.parse(e.data || '{}'); } catch (_) { }
+      const episodeId = doneData.episode_id || null;
+      this._pendingEpisodeFocusId = episodeId;
+      this._episodesNeedRefresh = true;
       this._generationComplete = true;
       this._updateProgress();
       this._updateSkipButton();
-      // Refresh episode list so the new episode appears immediately
-      this._loadEpisodes();
+      this._refreshEpisodesAfterGeneration(episodeId);
     });
 
     es.addEventListener('error', (e) => {
@@ -1444,7 +1450,24 @@ class ResonovaPlayer {
     this._loadPlaylists();
   }
 
-  async _loadEpisodes() {
+  async _refreshEpisodesAfterGeneration(episodeId) {
+    const loadedFresh = await this._loadEpisodes({ focusEpisodeId: episodeId });
+    if (loadedFresh) {
+      this._episodesNeedRefresh = false;
+      if (this._pendingEpisodeFocusId === episodeId) this._pendingEpisodeFocusId = null;
+    }
+
+    if (!episodeId) return;
+    try {
+      const ep = await this._apiFetch(`/api/episodes/${episodeId}`);
+      localStorage.setItem(`resonova:episode:${episodeId}`, JSON.stringify({ ts: Date.now(), ep }));
+    } catch (e) {
+      console.warn('Failed to cache completed episode detail:', e);
+    }
+  }
+
+  async _loadEpisodes(options = {}) {
+    const focusEpisodeId = options.focusEpisodeId || null;
     let episodes = null;
     let fromCache = false;
     try {
@@ -1463,10 +1486,17 @@ class ResonovaPlayer {
           fromCache = true;
         }
       } catch { /* ignore */ }
-      if (!episodes) return;
+      if (!episodes) return false;
     }
 
-    if (!episodes || !episodes.length) return;
+    const container = document.getElementById('past-episodes');
+    if (!container) return false;
+
+    if (!episodes || !episodes.length) {
+      container.innerHTML = '';
+      document.getElementById('section-episodes').classList.remove('loaded');
+      return !fromCache;
+    }
 
     // Group episodes by playlist_uri; custom track-list casts go under a separate bucket.
     const groups = new Map();
@@ -1492,8 +1522,13 @@ class ResonovaPlayer {
       (a, b) => b.latestDate.localeCompare(a.latestDate)
     );
 
-    const container = document.getElementById('past-episodes');
-    container.innerHTML = sortedGroups.map((g, i) => this._episodeGroupHTML(g, i === 0)).join('');
+    const focusGroupKey = focusEpisodeId
+      ? sortedGroups.find(g => g.episodes.some(ep => ep.id === focusEpisodeId))?.key
+      : null;
+    container.innerHTML = sortedGroups.map((g, i) => {
+      const expanded = focusGroupKey ? g.key === focusGroupKey : i === 0;
+      return this._episodeGroupHTML(g, expanded, focusEpisodeId);
+    }).join('');
 
     document.querySelectorAll('.cache-notice').forEach(el => el.remove());
     if (fromCache) {
@@ -1504,9 +1539,19 @@ class ResonovaPlayer {
     }
 
     document.getElementById('section-episodes').classList.add('loaded');
+    if (focusEpisodeId) {
+      requestAnimationFrame(() => {
+        const card = [...container.querySelectorAll('.episode-card')]
+          .find(el => el.dataset.episodeId === focusEpisodeId);
+        if (card && document.getElementById('state-connected')?.classList.contains('active')) {
+          card.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+      });
+    }
+    return !fromCache;
   }
 
-  _episodeGroupHTML(group, expanded) {
+  _episodeGroupHTML(group, expanded, focusEpisodeId = null) {
     const latestDate = new Date(group.latestDate).toLocaleDateString(undefined, {
       month: 'short', day: 'numeric', year: 'numeric',
     });
@@ -1521,14 +1566,14 @@ class ResonovaPlayer {
         </div>
         <div class="ep-group-body">
           <div class="ep-group-cards">
-            ${group.episodes.map(ep => this._episodeCardHTML(ep)).join('')}
+            ${group.episodes.map(ep => this._episodeCardHTML(ep, ep.id === focusEpisodeId)).join('')}
           </div>
         </div>
       </div>
     `;
   }
 
-  _episodeCardHTML(ep) {
+  _episodeCardHTML(ep, isNew = false) {
     const date = new Date(ep.created_at).toLocaleDateString(undefined, {
       month: 'short', day: 'numeric', year: 'numeric',
     });
@@ -1542,6 +1587,10 @@ class ResonovaPlayer {
       ? `<span class="ep-run-badge">Run #${ep.run_number}</span>`
       : '';
 
+    const newBadge = isNew
+      ? '<span class="ep-new-badge">New</span>'
+      : '';
+
     const fingerprintBadge = ep.order_fingerprint
       ? `<span class="ep-fingerprint" title="Order fingerprint">${this._esc(ep.order_fingerprint)}</span>`
       : '';
@@ -1551,12 +1600,12 @@ class ResonovaPlayer {
       : '';
 
     return `
-      <div class="episode-card" data-episode-id="${ep.id}">
+      <div class="episode-card${isNew ? ' episode-card-new' : ''}" data-episode-id="${ep.id}">
         <div class="episode-card-main">
           <div class="episode-card-name">${this._esc(ep.name)}</div>
           <div class="episode-card-meta">
             ${this._esc(ep.playlist_name)} · ${ep.track_count} tracks · ${date} ${time}
-            ${runBadge}${fingerprintBadge}
+            ${newBadge}${runBadge}${fingerprintBadge}
           </div>
           ${preview}
         </div>
@@ -1698,6 +1747,14 @@ class ResonovaPlayer {
       if (name === 'playing' && !document.getElementById('diag-toggle')) {
         document.getElementById('on-air-badge')?.appendChild(this._createDiagToggle());
       }
+    }
+    if (name === 'connected' && this._episodesNeedRefresh) {
+      this._loadEpisodes({ focusEpisodeId: this._pendingEpisodeFocusId }).then((loadedFresh) => {
+        if (loadedFresh) {
+          this._episodesNeedRefresh = false;
+          this._pendingEpisodeFocusId = null;
+        }
+      });
     }
     this._updateNowPlayingMiniPanel(name);
   }
