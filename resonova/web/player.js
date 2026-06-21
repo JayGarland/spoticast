@@ -724,6 +724,7 @@ class ResonovaPlayer {
     this._loadSpotifySDK();
     this._loadLibrary();
     this._initLastFM();
+    this._initMemory();
     this._initHistoryNav();
     this._initMediaSessionHandlers();
 
@@ -806,6 +807,171 @@ class ResonovaPlayer {
       connected.style.display = 'none';
       disconnected.style.display = 'flex';
     }
+  }
+
+  _renderLastFMStatus(status) {
+    const connected = document.getElementById('lastfm-connected');
+    const disconnected = document.getElementById('lastfm-disconnected');
+    if (status.connected) {
+      const scrobbles = status.scrobbles ? ` · ${status.scrobbles.toLocaleString()} scrobbles` : '';
+      document.getElementById('lastfm-pill-label').textContent = `@${status.username}${scrobbles}`;
+      connected.style.display = 'inline-flex';
+      disconnected.style.display = 'none';
+    } else {
+      connected.style.display = 'none';
+      disconnected.style.display = 'flex';
+    }
+  }
+
+  // ── Memory widget ────────────────────────────────────────────────────────
+
+  async _initMemory() {
+    try {
+      const profile = await this._apiFetch('/api/profile');
+      document.getElementById('memory-widget').style.display = '';
+      this._updateMemoryPillLabel(profile);
+
+      document.getElementById('memory-inspect-btn').addEventListener('click', async () => {
+        const panel = document.getElementById('memory-panel');
+        if (panel.style.display === 'none') {
+          try {
+            const fresh = await this._apiFetch('/api/profile');
+            this._renderMemoryPanel(fresh);
+            panel.style.display = '';
+            document.getElementById('memory-inspect-btn').textContent = 'close';
+            document.getElementById('memory-clear-btn').style.display = '';
+          } catch (e) {
+            console.warn('Memory load failed:', e);
+          }
+        } else {
+          panel.style.display = 'none';
+          document.getElementById('memory-inspect-btn').textContent = 'inspect';
+          document.getElementById('memory-clear-btn').style.display = 'none';
+        }
+      });
+
+      document.getElementById('memory-close-btn').addEventListener('click', () => {
+        document.getElementById('memory-panel').style.display = 'none';
+        document.getElementById('memory-inspect-btn').textContent = 'inspect';
+        document.getElementById('memory-clear-btn').style.display = 'none';
+      });
+
+      const clearHandler = async () => {
+        if (!confirm('Clear all memory? Resonova will start learning your taste again from scratch. Your saved casts are not affected.')) return;
+        try {
+          const empty = await this._apiFetch('/api/profile', { method: 'DELETE' });
+          this._updateMemoryPillLabel(empty);
+          this._renderMemoryPanel(empty);
+        } catch (e) {
+          console.warn('Memory clear failed:', e);
+        }
+      };
+      document.getElementById('memory-clear-btn').addEventListener('click', clearHandler);
+      document.getElementById('memory-clear-action-btn').addEventListener('click', clearHandler);
+    } catch (e) {
+      console.warn('Memory init failed:', e);
+    }
+  }
+
+  _updateMemoryPillLabel(profile) {
+    const taste = profile.taste_profile || {};
+    const memories = profile.memories || [];
+    const artistCount = (taste.top_artists || []).length;
+    const memCount = memories.length;
+    let label = 'Memory';
+    if (artistCount || memCount) {
+      const parts = [];
+      if (artistCount) parts.push(`${artistCount} artist${artistCount !== 1 ? 's' : ''}`);
+      if (memCount) parts.push(`${memCount} note${memCount !== 1 ? 's' : ''}`);
+      label = parts.join(' · ');
+    } else {
+      label = 'Memory — empty';
+    }
+    document.getElementById('memory-pill-label').textContent = label;
+  }
+
+  _renderMemoryPanel(profile) {
+    const taste = profile.taste_profile || {};
+    const prefs = profile.commentary_preferences || {};
+    const memories = profile.memories || [];
+
+    const hasAny = (
+      (taste.top_artists || []).length ||
+      (taste.recurring_styles || []).length ||
+      (taste.favorite_eras || []).length ||
+      (prefs.tone || []).length ||
+      (prefs.avoid || []).length ||
+      (prefs.loved_patterns || []).length ||
+      memories.length
+    );
+
+    document.getElementById('memory-empty-hint').style.display = hasAny ? 'none' : '';
+
+    // ── Taste profile rows ─────────────────────────────────────────────────
+    const tasteSection = document.getElementById('memory-taste-section');
+    const tasteRows = document.getElementById('memory-taste-rows');
+    tasteRows.innerHTML = '';
+    const tasteFields = [
+      ['top artists', taste.top_artists],
+      ['recurring styles', taste.recurring_styles],
+      ['favourite eras', taste.favorite_eras],
+      ['recent shifts', taste.recent_shifts],
+      ['playlist patterns', taste.playlist_patterns],
+    ];
+    let hasTaste = false;
+    for (const [label, values] of tasteFields) {
+      if (!values || !values.length) continue;
+      hasTaste = true;
+      const row = document.createElement('div');
+      row.className = 'memory-row';
+      row.innerHTML = `<span class="memory-row-label">${label}</span><span class="memory-row-value">${values.join(', ')}</span>`;
+      tasteRows.appendChild(row);
+    }
+    tasteSection.style.display = hasTaste ? '' : 'none';
+
+    // ── Commentary preferences rows ────────────────────────────────────────
+    const prefsSection = document.getElementById('memory-prefs-section');
+    const prefsRows = document.getElementById('memory-prefs-rows');
+    prefsRows.innerHTML = '';
+    const prefsFields = [
+      ['tone', prefs.tone],
+      ['depth', prefs.depth ? [prefs.depth] : null],
+      ['avoid', prefs.avoid],
+      ['lean into', prefs.loved_patterns],
+    ];
+    let hasPrefs = false;
+    for (const [label, values] of prefsFields) {
+      if (!values || !values.length) continue;
+      hasPrefs = true;
+      const row = document.createElement('div');
+      row.className = 'memory-row';
+      row.innerHTML = `<span class="memory-row-label">${label}</span><span class="memory-row-value">${values.join(', ')}</span>`;
+      prefsRows.appendChild(row);
+    }
+    prefsSection.style.display = hasPrefs ? '' : 'none';
+
+    // ── Memories list ──────────────────────────────────────────────────────
+    const memoriesSection = document.getElementById('memory-memories-section');
+    const memoriesRows = document.getElementById('memory-memories-rows');
+    memoriesRows.innerHTML = '';
+    if (memories.length) {
+      const sorted = [...memories].sort((a, b) => {
+        const pin = (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0);
+        if (pin !== 0) return pin;
+        const cRank = { high: 0, medium: 1, low: 2 };
+        return (cRank[a.confidence] ?? 2) - (cRank[b.confidence] ?? 2);
+      });
+      for (const m of sorted) {
+        const item = document.createElement('div');
+        item.className = 'memory-memory-item';
+        const pinBadge = m.pinned ? '<span class="memory-badge pinned">pinned</span>' : '';
+        const confBadge = m.confidence ? `<span class="memory-badge ${m.confidence}">${m.confidence}</span>` : '';
+        const srcBadge = m.source ? `<span class="memory-badge">${m.source}</span>` : '';
+        item.innerHTML = `<span style="flex:1">${m.text}</span>${pinBadge}${confBadge}${srcBadge}`;
+        memoriesRows.appendChild(item);
+      }
+    }
+    memoriesSection.style.display = memories.length ? '' : 'none';
   }
 
   _loadSpotifySDK() {

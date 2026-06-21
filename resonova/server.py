@@ -23,6 +23,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from resonova.config import settings
 from resonova import episodes as episodes_store
+from resonova import profile as profile_store
 from resonova import variety as variety_store
 from resonova.api import audio as audio_api
 from resonova.api import gemini as gemini_api
@@ -287,6 +288,19 @@ async def api_delete_episode(episode_id: str):
     return JSONResponse({"deleted": True, "id": episode_id})
 
 
+@app.get("/api/profile")
+async def api_get_profile():
+    """Return the current listener profile (memory layer)."""
+    return JSONResponse(profile_store.load_profile())
+
+
+@app.delete("/api/profile")
+async def api_delete_profile():
+    """Reset the listener profile to an empty skeleton; saved casts are untouched."""
+    empty = profile_store.reset_profile()
+    return JSONResponse(empty)
+
+
 class GenerateRequest(BaseModel):
     playlist_uri: str | None = None
     track_uris: list[str] | None = None
@@ -429,6 +443,14 @@ async def _run_generation(job: Job):
         # Attach playlist name to context so generate_episode_name can use it
         context["playlist_name"] = job.playlist_name
 
+        # Attach profile to context for prompt injection (non-blocking; missing = omit block)
+        try:
+            _prompt_profile = profile_store.load_profile()
+            if _prompt_profile.get("memory_enabled", True):
+                context["persistent_profile"] = _prompt_profile
+        except Exception as _pe:
+            logger.warning("Could not load profile for prompt: %s", _pe)
+
         script, episode_name = await asyncio.gather(
             gemini_api.generate_script(context),
             gemini_api.generate_episode_name(context),
@@ -517,6 +539,16 @@ async def _run_generation(job: Job):
         # Persist variety memory only after successful save (playlist episodes only)
         if _playlist_selected_uris and job.playlist_uri:
             variety_store.save_variety_memory(job.playlist_uri, _playlist_selected_uris)
+
+        # Update persistent listener profile (Slice One: context summariser).
+        # Runs only when memory is enabled; must NOT block or fail generation.
+        try:
+            _profile = profile_store.load_profile()
+            if _profile.get("memory_enabled", True):
+                _profile = profile_store.summarize_context(context, _profile)
+                profile_store.save_profile(_profile)
+        except Exception as _profile_exc:
+            logger.warning("Profile update failed (non-blocking): %s", _profile_exc)
 
         job.push("done", {"episode_id": episode_id, "episode_name": episode_name})
         job.status = "done"

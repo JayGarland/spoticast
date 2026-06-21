@@ -2042,6 +2042,107 @@ body::after {
   margin-bottom: 0.5rem;
 }
 
+/* ── Memory widget pill (accent colour overrides the Last.fm red) ── */
+#memory-pill {
+  background: var(--accent-low);
+  border-color: var(--accent-mid);
+  color: var(--accent);
+}
+
+/* ── Memory detail panel ── */
+.memory-panel {
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+.memory-panel-inner {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  padding: 0.9rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  font-size: 0.68rem;
+}
+
+.memory-empty-hint {
+  color: var(--cream-mid);
+  font-size: 0.66rem;
+  letter-spacing: 0.03em;
+}
+
+.memory-section-title {
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--cream-low);
+  margin-bottom: 0.3rem;
+}
+
+.memory-row {
+  display: flex;
+  gap: 0.4rem;
+  align-items: baseline;
+  padding: 0.15rem 0;
+  color: var(--cream-mid);
+  line-height: 1.4;
+}
+
+.memory-row-label {
+  flex-shrink: 0;
+  color: var(--cream-low);
+  font-size: 0.62rem;
+  min-width: 5.5rem;
+}
+
+.memory-row-value {
+  color: var(--cream);
+}
+
+.memory-memory-item {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  padding: 0.2rem 0;
+  border-bottom: 1px solid var(--panel-border);
+  font-size: 0.66rem;
+  line-height: 1.5;
+}
+
+.memory-memory-item:last-child {
+  border-bottom: none;
+}
+
+.memory-badge {
+  flex-shrink: 0;
+  font-size: 0.55rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--cream-low);
+  background: rgba(255,255,255,0.05);
+  border-radius: 2px;
+  padding: 0.1rem 0.3rem;
+  align-self: center;
+}
+
+.memory-badge.high { color: var(--accent); }
+.memory-badge.pinned { color: var(--green); }
+
+.memory-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.memory-clear-action {
+  color: rgba(255, 80, 80, 0.7);
+}
+
+.memory-clear-action:hover {
+  color: rgba(255, 80, 80, 1);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

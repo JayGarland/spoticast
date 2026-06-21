@@ -9,6 +9,7 @@ from google import genai
 from google.genai import types
 
 from resonova import cache
+from resonova import profile as profile_store
 from resonova.config import settings
 
 _CACHE_PREFIX = "gemini"
@@ -211,6 +212,7 @@ def build_prompt(context: dict[str, Any]) -> str:
     tracks     = context["tracks"]
     artist_profiles: dict[str, dict] = context.get("artist_profiles", {})
     lastfm_user: dict = context.get("lastfm_user", {})
+    persistent_profile: dict | None = context.get("persistent_profile")
 
     has_lastfm = bool(lastfm_user)
 
@@ -308,11 +310,64 @@ def build_prompt(context: dict[str, Any]) -> str:
 
     track_section = "\n".join(_track_block(i, t) for i, t in enumerate(tracks))
 
+    # ── Persistent memory block (omitted when empty or disabled) ─────────────
+    persistent_memory_section = ""
+    if (
+        persistent_profile is not None
+        and persistent_profile.get("memory_enabled", True)
+        and profile_store.profile_has_content(persistent_profile)
+    ):
+        mem_lines: list[str] = []
+
+        taste = persistent_profile.get("taste_profile", {})
+        top_artists = taste.get("top_artists", [])[:5]
+        if top_artists:
+            mem_lines.append("Taste — top artists: " + ", ".join(top_artists))
+
+        styles = taste.get("recurring_styles", [])[:5]
+        if styles:
+            mem_lines.append("Taste — recurring styles: " + ", ".join(styles))
+
+        eras = taste.get("favorite_eras", [])[:3]
+        if eras:
+            mem_lines.append("Taste — favourite eras: " + ", ".join(eras))
+
+        prefs = persistent_profile.get("commentary_preferences", {})
+        if prefs.get("tone"):
+            mem_lines.append("Preferred tone: " + ", ".join(prefs["tone"][:3]))
+        if prefs.get("avoid"):
+            mem_lines.append("HOST INSTRUCTION — avoid: " + "; ".join(prefs["avoid"][:4]))
+        if prefs.get("loved_patterns"):
+            mem_lines.append("HOST INSTRUCTION — lean into: " + "; ".join(prefs["loved_patterns"][:3]))
+
+        top_memories = profile_store.select_memories_for_prompt(persistent_profile, limit=5)
+        for m in top_memories:
+            pin_marker = "★ " if m.get("pinned") else ""
+            conf = m.get("confidence", "")
+            src = m.get("source", "")
+            meta = f"[{src}/{conf}]" if src or conf else ""
+            mem_lines.append(f"{pin_marker}{m['text']} {meta}".strip())
+
+        # Hard guardrail reminder — reinforces gemini.py:58 and :134
+        mem_lines.append(
+            "GUARDRAIL: Use the above to choose angles and steer tone. "
+            "Never narrate the listener's habits aloud — "
+            "the hosts discuss music, not the listener."
+        )
+
+        # Cap total block to ~15 lines (design spec §7)
+        mem_lines = mem_lines[:15]
+        persistent_memory_section = (
+            "\n═══ PERSISTENT MEMORY ═══\n"
+            + "\n".join(mem_lines)
+            + "\n"
+        )
+
     return f"""Generate a rich, detailed podcast commentary script for this Spotify playlist.
 
 ═══ LISTENER PROFILE ═══
 {chr(10).join(listener_lines)}
-
+{persistent_memory_section}
 ═══ PLAYLIST OVERVIEW ═══
 {summary['total_tracks']} tracks | Avg energy: {summary['avg_energy']} | Avg valence: {summary['avg_valence']} | Avg tempo: {summary['avg_tempo']} BPM
 {summary['personal_favorites_count']} tracks are Spotify top tracks | {summary.get('lastfm_total_plays', 0)} total Last.fm plays across playlist

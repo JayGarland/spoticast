@@ -142,6 +142,42 @@
         </div>
       </div>
 
+      <!-- Memory panel — inspect + reset (Slice One); hidden until profile loads -->
+      <div class="service-row" id="memory-widget" style="display:none">
+        <div class="service-pill" id="memory-pill">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+            <circle cx="7" cy="7" r="6.5" stroke="currentColor" stroke-opacity="0.6"/>
+            <circle cx="7" cy="7" r="2.5" fill="currentColor" fill-opacity="0.7"/>
+          </svg>
+          <span id="memory-pill-label">Memory</span>
+          <button class="service-pill-action" id="memory-inspect-btn" type="button">inspect</button>
+          <button class="service-pill-action" id="memory-clear-btn" type="button" style="display:none">clear</button>
+        </div>
+      </div>
+
+      <!-- Memory detail panel (expanded inline below the pill) -->
+      <div class="memory-panel" id="memory-panel" style="display:none">
+        <div class="memory-panel-inner" id="memory-panel-inner">
+          <p class="memory-empty-hint" id="memory-empty-hint" style="display:none">No memory yet — it builds after your first cast.</p>
+          <div id="memory-taste-section" style="display:none">
+            <div class="memory-section-title">Taste profile</div>
+            <div id="memory-taste-rows"></div>
+          </div>
+          <div id="memory-prefs-section" style="display:none">
+            <div class="memory-section-title">Commentary preferences</div>
+            <div id="memory-prefs-rows"></div>
+          </div>
+          <div id="memory-memories-section" style="display:none">
+            <div class="memory-section-title">Memories</div>
+            <div id="memory-memories-rows"></div>
+          </div>
+          <div class="memory-actions">
+            <button class="btn btn-ghost btn-sm" id="memory-close-btn" type="button">close</button>
+            <button class="btn btn-ghost btn-sm memory-clear-action" id="memory-clear-action-btn" type="button">Clear memory</button>
+          </div>
+        </div>
+      </div>
+
       <form class="uri-form" id="generate-form" autocomplete="off">
         <div class="uri-input-wrap">
           <textarea
