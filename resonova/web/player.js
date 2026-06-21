@@ -843,7 +843,8 @@ class ResonovaPlayer {
       this._deviceAcquiredAt = Date.now();
       this._obsRecord('device:ready', `gen=${this._deviceGeneration} id=...${device_id.slice(-6)}`);
       this._clearSpotifyUnhealthy();
-      this._transferPlayback(device_id, token);
+      // Do not transfer playback on passive page load. A phone refreshing the
+      // library must not steal Spotify playback from an active PC session.
     });
 
     this.spotifyPlayer.addListener('not_ready', () => {
@@ -1627,7 +1628,7 @@ class ResonovaPlayer {
     let episodes = null;
     let fromCache = false;
     try {
-      const data = await this._apiFetch('/api/episodes');
+      const data = await this._apiFetch(`/api/episodes?_=${Date.now()}`, { cache: 'no-store' });
       episodes = data.episodes;
       try {
         localStorage.setItem('resonova:episodes-cache', JSON.stringify({ ts: Date.now(), episodes }));
@@ -1895,7 +1896,7 @@ class ResonovaPlayer {
   // UI helpers
   // ──────────────────────────────────────────────
 
-  _showState(name) {
+  _showState(name, options = {}) {
     document.querySelectorAll('.state').forEach(el => el.classList.remove('active'));
     const el = document.getElementById(`state-${name}`);
     if (el) {
@@ -1906,10 +1907,11 @@ class ResonovaPlayer {
     }
     if (name === 'connected') {
       const now = Date.now();
-      const focusId = this._pendingEpisodeFocusId || (this._episodeId && this.currentItem ? this._episodeId : null);
+      const focusId = options.focusEpisodeId || this._pendingEpisodeFocusId || this._episodeId || null;
       // Refresh whenever: (a) flag set by generation, (b) pending focus episode to scroll to,
       // or (c) more than 8 s since last refresh (catches SSE-drop / back-navigation scenarios).
       const shouldRefresh =
+        options.forceRefreshEpisodes ||
         this._episodesNeedRefresh ||
         !!focusId ||
         (now - this._lastConnectedRefresh) > 8000;
@@ -2368,11 +2370,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Back-to-library buttons
   document.getElementById('back-to-library-btn').addEventListener('click', () => {
-    resonova._showState('connected');
+    resonova._showState('connected', { forceRefreshEpisodes: true });
   });
 
   document.getElementById('back-from-generating-btn').addEventListener('click', () => {
-    resonova._showState('connected');
+    resonova._showState('connected', { forceRefreshEpisodes: true });
   });
 
   document.getElementById('return-to-player-btn').addEventListener('click', () => {
