@@ -1107,18 +1107,6 @@ class ResonovaPlayer {
     this._setNowPlaying(item.name || 'Spotify music', item.artist || 'Connecting to Spotify...');
     document.getElementById('next-up').textContent = '';
 
-    if (document.visibilityState !== 'visible') {
-      this._obsRecord('play:spotify:deferred-hidden', item.uri.slice(-24));
-      this._spotifyUnhealthy = true;
-      this._spotifyRecoveryFailed = true;
-      this._lifecycle.playbackError = 'Spotify deferred while page hidden';
-      this._setNowPlaying('Spotify waiting for phone unlock', 'Return to resume or use Skip Music');
-      this._updateRecoveryControl();
-      this._updateSkipMusicButton();
-      this._saveResumeState();
-      return;
-    }
-
     document.getElementById('waveform').classList.add('spotify-mode');
     document.getElementById('waveform').classList.remove('paused');
     document.getElementById('progress-fill').classList.add('spotify-mode');
@@ -1193,6 +1181,17 @@ class ResonovaPlayer {
         }
       } catch (err) {
         if (err.status !== 404) throw err;
+        if (document.visibilityState !== 'visible') {
+          this._obsRecord('play:spotify:connect-missing-hidden', item.uri.slice(-24));
+          this._spotifyUnhealthy = true;
+          this._spotifyRecoveryFailed = true;
+          this._lifecycle.playbackError = 'Spotify device unavailable while page hidden';
+          this._setNowPlaying('Spotify waiting for phone unlock', 'Return to resume or use Skip Music');
+          this._updateRecoveryControl();
+          this._updateSkipMusicButton();
+          this._saveResumeState();
+          return;
+        }
         console.warn('[Resonova] Spotify device returned 404; rebuilding SDK session once and retrying.', err);
         this._markSpotifyUnhealthy('not_ready', err.message || 'Spotify device did not start playback');
         this._discardSpotifyDevice(err.message || 'playback did not start');
