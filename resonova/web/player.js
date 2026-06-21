@@ -1128,7 +1128,7 @@ class ResonovaPlayer {
     panel.style.display = '';
   }
 
-
+  _loadSpotifySDK() {
     window.onSpotifyWebPlaybackSDKReady = () => this._initSpotifyPlayer();
     const script = document.createElement('script');
     script.src = 'https://sdk.scdn.co/spotify-player.js';
