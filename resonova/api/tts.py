@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import logging
 import re
+import time
+from dataclasses import dataclass, field
 
 from google import genai
 from google.genai import types
 
 from resonova.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -118,36 +123,91 @@ _VOICE_MAP = {
     "HOST_B": ("Sam", "Aoede"),
 }
 
-_client_kwargs: dict | None = None
+
+# ---------------------------------------------------------------------------
+# TTS resource pool with per-resource cooldown tracking
+# ---------------------------------------------------------------------------
+
+@dataclass
+class _TtsResource:
+    """One TTS API resource (Google project/key) with its own quota cooldown."""
+    label: str
+    client_kwargs: dict = field(repr=False)
+    _cooldown_until: float = field(default=0.0, repr=False)
+
+    def is_cooling(self) -> bool:
+        """Return True if this resource is still within a quota cooldown window."""
+        return time.monotonic() < self._cooldown_until
+
+    def set_cooldown(self, retry_after_seconds: int | None) -> None:
+        """Mark this resource as quota-exhausted for the given duration."""
+        secs = retry_after_seconds if (retry_after_seconds and retry_after_seconds > 0) else 3600
+        self._cooldown_until = time.monotonic() + secs
+
+    def cooldown_remaining(self) -> float:
+        """Seconds until this resource's cooldown expires (0.0 if not cooling)."""
+        return max(0.0, self._cooldown_until - time.monotonic())
 
 
-def _resolve_client_kwargs() -> dict:
-    global _client_kwargs
-    if _client_kwargs is not None:
-        return _client_kwargs
-    if settings.gemini_api_key:
-        _client_kwargs = {"api_key": settings.gemini_api_key}
+_tts_resources: list[_TtsResource] | None = None
+
+
+def _build_tts_resources() -> list[_TtsResource]:
+    """Build the ordered TTS resource list from config (called once, lazily)."""
+    resources: list[_TtsResource] = []
+
+    # Primary resource: GEMINI_TTS_API_KEY overrides GEMINI_API_KEY for TTS only.
+    if settings.gemini_tts_api_key:
+        primary_kwargs: dict = {"api_key": settings.gemini_tts_api_key}
+    elif settings.gemini_api_key:
+        primary_kwargs = {"api_key": settings.gemini_api_key}
     else:
         import google.auth
         project = settings.google_cloud_project
         if not project:
             _, project = google.auth.default()
         # TTS models require a regional endpoint, not "global"
-        _client_kwargs = {"vertexai": True, "project": project, "location": "us-central1"}
-    return _client_kwargs
+        primary_kwargs = {"vertexai": True, "project": project, "location": "us-central1"}
+
+    resources.append(_TtsResource(label="primary", client_kwargs=primary_kwargs))
+
+    # Backup resources: each must be from a SEPARATE Google project for independent quota.
+    if settings.gemini_tts_backup_api_keys:
+        backup_num = 1
+        for raw_key in settings.gemini_tts_backup_api_keys.split(","):
+            key = raw_key.strip()
+            if not key:
+                continue
+            resources.append(_TtsResource(
+                label=f"backup_{backup_num}",
+                client_kwargs={"api_key": key},
+            ))
+            backup_num += 1
+
+    return resources
 
 
-def _new_client() -> genai.Client:
-    """Return a fresh genai.Client each call to avoid httpx closed-client errors."""
-    return genai.Client(**_resolve_client_kwargs())
+def _get_tts_resources() -> list[_TtsResource]:
+    """Return the module-level TTS resource pool, initialising it on first call."""
+    global _tts_resources
+    if _tts_resources is not None:
+        return _tts_resources
+    _tts_resources = _build_tts_resources()
+    return _tts_resources
 
 
 async def synthesize_dialogue(lines: list[dict]) -> bytes:
     """
     Synthesize a full multi-speaker dialogue in one API call.
 
+    Tries resources in order (primary, then backups). On quota exhaustion,
+    marks that resource as cooling and continues to the next. When all
+    resources are exhausted or cooling, raises GeminiTTSQuotaError so the
+    caller's graceful-failure path can run.
+
+    Non-quota errors surface immediately without trying backup resources.
+
     Returns raw PCM bytes: 16-bit signed, 24kHz, mono.
-    The model handles natural pacing and speaker transitions.
     """
     # Format the dialogue so the model knows which speaker says each line.
     # Speaker names must match the keys in speaker_voice_configs below.
@@ -183,24 +243,75 @@ async def synthesize_dialogue(lines: list[dict]) -> bytes:
         for _host, (name, voice) in _VOICE_MAP.items()
     ]
 
-    client = _new_client()
-    try:
-        response = await client.aio.models.generate_content(
-            model=settings.gemini_tts_model,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_modalities=["AUDIO"],
-                speech_config=types.SpeechConfig(
-                    multi_speaker_voice_config=types.MultiSpeakerVoiceConfig(
-                        speaker_voice_configs=speaker_voice_configs,
-                    ),
-                ),
+    generate_config = types.GenerateContentConfig(
+        response_modalities=["AUDIO"],
+        speech_config=types.SpeechConfig(
+            multi_speaker_voice_config=types.MultiSpeakerVoiceConfig(
+                speaker_voice_configs=speaker_voice_configs,
             ),
-        )
-    except Exception as exc:
-        quota_info = _parse_quota_error(exc)
-        if quota_info:
-            raise GeminiTTSQuotaError(**quota_info) from exc
-        raise
+        ),
+    )
 
-    return response.candidates[0].content.parts[0].inline_data.data
+    resources = _get_tts_resources()
+    last_quota_info: dict | None = None
+
+    for resource in resources:
+        if resource.is_cooling():
+            # This resource's per-project quota cooldown is still active — skip it
+            continue
+
+        client = genai.Client(**resource.client_kwargs)
+        try:
+            response = await client.aio.models.generate_content(
+                model=settings.gemini_tts_model,
+                contents=prompt,
+                config=generate_config,
+            )
+            return response.candidates[0].content.parts[0].inline_data.data
+
+        except Exception as exc:
+            quota_info = _parse_quota_error(exc)
+            if quota_info:
+                resource.set_cooldown(quota_info["retry_after_seconds"])
+                last_quota_info = quota_info
+                logger.warning(
+                    "TTS resource %s quota exhausted (model=%s); trying next resource.",
+                    resource.label,
+                    quota_info["model"],
+                )
+                continue
+            # Non-quota errors (network, auth, payload) surface immediately.
+            # Do not silently route to backups for arbitrary failures.
+            raise
+
+    # All resources are either already cooling or just became quota-exhausted.
+    # Report the earliest next-available time so the caller can surface it.
+    earliest_remaining: int | None = None
+    for resource in resources:
+        remaining = int(resource.cooldown_remaining())
+        if remaining > 0:
+            if earliest_remaining is None or remaining < earliest_remaining:
+                earliest_remaining = remaining
+
+    model = last_quota_info["model"] if last_quota_info else settings.gemini_tts_model
+
+    if earliest_remaining is not None:
+        wait_str = format_duration(earliest_remaining)
+        message = (
+            f"Generation paused: all configured Gemini TTS resources are exhausted "
+            f"(model: {model}). Earliest retry in about {wait_str}. "
+            f"Generated segments so far are saved."
+        )
+    else:
+        message = (
+            f"Generation paused: all configured Gemini TTS resources are exhausted "
+            f"(model: {model}). Try again later. "
+            f"Generated segments so far are saved."
+        )
+
+    raise GeminiTTSQuotaError(
+        code="tts_quota_exhausted",
+        model=model,
+        retry_after_seconds=earliest_remaining,
+        message=message,
+    )

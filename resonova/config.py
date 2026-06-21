@@ -22,6 +22,13 @@ class Settings(BaseSettings):
     # If GEMINI_API_KEY is set, Vertex AI / GCP credentials are not needed.
     gemini_api_key: str | None = None
 
+    # TTS-specific overrides for backup resource failover.
+    # GEMINI_TTS_API_KEY: optional; overrides GEMINI_API_KEY for the primary TTS resource only.
+    # GEMINI_TTS_BACKUP_API_KEYS: optional comma-separated keys from SEPARATE Google projects.
+    #   Keys from the same Google project share the same per-project quota and will not help.
+    gemini_tts_api_key: str | None = None
+    gemini_tts_backup_api_keys: str | None = None
+
     # GCP project for Vertex AI (only used when GEMINI_API_KEY is not set).
     # If unset, resolved automatically from Application Default Credentials.
     google_cloud_project: str | None = None
