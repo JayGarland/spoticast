@@ -888,9 +888,40 @@ class ResonovaPlayer {
       };
       document.getElementById('memory-clear-btn').addEventListener('click', clearHandler);
       document.getElementById('memory-clear-action-btn').addEventListener('click', clearHandler);
+
+      // Pin/delete delegation — attached ONCE here (not per-render) so a misclick
+      // can't consume the listener and silently disable the buttons.
+      document.getElementById('memory-memories-rows').addEventListener('click', async (e) => {
+        const btn = e.target.closest('[data-action]');
+        if (!btn) return;
+        const id = btn.dataset.id;
+        let body = {};
+        if (btn.dataset.action === 'pin') {
+          body = { pin_memory_id: id, pin_value: btn.dataset.pinned !== '1' };
+        } else if (btn.dataset.action === 'delete') {
+          body = { delete_memory_id: id };
+        }
+        try {
+          const updated = await this._apiFetch('/api/profile', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          this._updateMemoryPillLabel(updated);
+          this._renderMemoryPanel(updated);
+        } catch (e2) {
+          console.warn('Memory action failed:', e2);
+        }
+      });
     } catch (e) {
       console.warn('Memory init failed:', e);
     }
+  }
+
+  _escapeHtml(s) {
+    return String(s ?? '').replace(/[&<>"']/g, (c) => (
+      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
   }
 
   _updateMemoryPillLabel(profile) {
@@ -967,7 +998,7 @@ class ResonovaPlayer {
       hasTaste = true;
       const row = document.createElement('div');
       row.className = 'memory-row';
-      row.innerHTML = `<span class="memory-row-label">${label}</span><span class="memory-row-value">${values.join(', ')}</span>`;
+      row.innerHTML = `<span class="memory-row-label">${label}</span><span class="memory-row-value">${values.map((v) => this._escapeHtml(v)).join(', ')}</span>`;
       tasteRows.appendChild(row);
     }
     tasteSection.style.display = hasTaste ? '' : 'none';
@@ -988,7 +1019,7 @@ class ResonovaPlayer {
       hasPrefs = true;
       const row = document.createElement('div');
       row.className = 'memory-row';
-      row.innerHTML = `<span class="memory-row-label">${label}</span><span class="memory-row-value">${values.join(', ')}</span>`;
+      row.innerHTML = `<span class="memory-row-label">${label}</span><span class="memory-row-value">${values.map((v) => this._escapeHtml(v)).join(', ')}</span>`;
       prefsRows.appendChild(row);
     }
     prefsSection.style.display = hasPrefs ? '' : 'none';
@@ -1009,41 +1040,16 @@ class ResonovaPlayer {
         item.className = 'memory-memory-item';
         const pinBadge = m.pinned ? '<span class="memory-badge pinned">pinned</span>' : '';
         const confBadge = m.confidence ? `<span class="memory-badge ${m.confidence}">${m.confidence}</span>` : '';
-        const srcBadge = m.source ? `<span class="memory-badge">${m.source}</span>` : '';
+        const srcBadge = m.source ? `<span class="memory-badge">${this._escapeHtml(m.source)}</span>` : '';
         item.innerHTML = `
-          <span style="flex:1">${m.text}</span>
+          <span style="flex:1">${this._escapeHtml(m.text)}</span>
           ${pinBadge}${confBadge}${srcBadge}
           <button class="memory-action-btn" data-action="pin" data-id="${m.id}" data-pinned="${m.pinned ? '1' : '0'}" title="${m.pinned ? 'Unpin' : 'Pin'}">${m.pinned ? '★' : '☆'}</button>
           <button class="memory-action-btn" data-action="delete" data-id="${m.id}" title="Delete">✕</button>
         `;
         memoriesRows.appendChild(item);
       }
-
-      // Delegate pin/delete clicks
-      memoriesRows.addEventListener('click', async (e) => {
-        const btn = e.target.closest('[data-action]');
-        if (!btn) return;
-        const action = btn.dataset.action;
-        const id = btn.dataset.id;
-        try {
-          let body = {};
-          if (action === 'pin') {
-            const isPinned = btn.dataset.pinned === '1';
-            body = { pin_memory_id: id, pin_value: !isPinned };
-          } else if (action === 'delete') {
-            body = { delete_memory_id: id };
-          }
-          const updated = await this._apiFetch('/api/profile', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-          });
-          this._updateMemoryPillLabel(updated);
-          this._renderMemoryPanel(updated);
-        } catch (e2) {
-          console.warn('Memory action failed:', e2);
-        }
-      }, { once: true });
+      // Pin/delete clicks are handled by the delegated listener attached once in _initMemory.
     }
     memoriesSection.style.display = memories.length ? '' : 'none';
   }
