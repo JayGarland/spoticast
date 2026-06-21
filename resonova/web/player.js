@@ -67,6 +67,8 @@ class ResonovaPlayer {
     this._nowPlayingArtist = '';
     this._pendingEpisodeFocusId = null;
     this._episodesNeedRefresh = false;
+    this._lastConnectedRefresh = 0; // timestamp of last _loadEpisodes call from _showState
+    this._metaPrefetch = new Set(); // in-flight Spotify metadata prefetch guard (keyed by URI)
 
     // ── Observability ring buffer (max 50 entries) ─────────────────────────
     this._obsTimeline = [];
@@ -1081,6 +1083,8 @@ class ResonovaPlayer {
         `Up next: <strong>${this._esc(nextSpotify.name)}</strong>`;
     } else {
       document.getElementById('next-up').textContent = '';
+      // Name not yet known — prefetch metadata asynchronously during commentary
+      if (nextSpotify?.uri) this._prefetchNextTrackMeta(nextSpotify);
     }
 
     document.getElementById('waveform').classList.remove('spotify-mode');
@@ -1113,6 +1117,43 @@ class ResonovaPlayer {
         console.error('Audio play failed:', err);
         this._playNext();
       });
+  }
+
+  /**
+   * Asynchronously prefetch Spotify track metadata during commentary so the
+   * "Up next" display can update without waiting for the Spotify segment to start.
+   * Uses _metaPrefetch as an in-flight guard to prevent duplicate fetch storms.
+   */
+  async _prefetchNextTrackMeta(spotifyItem) {
+    if (!spotifyItem?.uri || this._metaPrefetch.has(spotifyItem.uri)) return;
+    this._metaPrefetch.add(spotifyItem.uri);
+    try {
+      const { token } = await this._apiFetch('/auth/token');
+      const trackId = spotifyItem.uri.split(':')[2];
+      if (!trackId) return;
+      const res = await this._fetchWithTimeout(
+        `https://api.spotify.com/v1/tracks/${trackId}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+        8000,
+      );
+      if (!res.ok) return;
+      const data = await res.json();
+      const artist = data.artists.map(a => a.name).join(', ');
+      spotifyItem.name = data.name;
+      spotifyItem.artist = artist;
+      spotifyItem.duration_ms = data.duration_ms;
+      this._cacheSet(spotifyItem.uri, { name: data.name, artist, duration_ms: data.duration_ms });
+      // Update only if this track is still the next Spotify segment.
+      const stillNext = this.queue.find(q => q.type === 'spotify')?.uri === spotifyItem.uri;
+      if (this._segmentType === 'commentary' && stillNext) {
+        const el = document.getElementById('next-up');
+        if (el) el.innerHTML = `Up next: <strong>${this._esc(data.name)}</strong>`;
+      }
+    } catch (_) {
+      // Silently ignore — commentary playback is unaffected
+    } finally {
+      this._metaPrefetch.delete(spotifyItem.uri);
+    }
   }
 
   async _playSpotifyTrack(item) {
@@ -1463,7 +1504,8 @@ class ResonovaPlayer {
     const loadedFresh = await this._loadEpisodes({ focusEpisodeId: episodeId });
     if (loadedFresh) {
       this._episodesNeedRefresh = false;
-      if (this._pendingEpisodeFocusId === episodeId) this._pendingEpisodeFocusId = null;
+      // Do NOT clear _pendingEpisodeFocusId here — keep it so that when the user
+      // enters the connected state the list re-loads and scrolls to the new episode.
     }
 
     if (!episodeId) return;
@@ -1757,13 +1799,26 @@ class ResonovaPlayer {
         document.getElementById('on-air-badge')?.appendChild(this._createDiagToggle());
       }
     }
-    if (name === 'connected' && this._episodesNeedRefresh) {
-      this._loadEpisodes({ focusEpisodeId: this._pendingEpisodeFocusId }).then((loadedFresh) => {
-        if (loadedFresh) {
-          this._episodesNeedRefresh = false;
-          this._pendingEpisodeFocusId = null;
-        }
-      });
+    if (name === 'connected') {
+      const now = Date.now();
+      const focusId = this._pendingEpisodeFocusId || (this._episodeId && this.currentItem ? this._episodeId : null);
+      // Refresh whenever: (a) flag set by generation, (b) pending focus episode to scroll to,
+      // or (c) more than 8 s since last refresh (catches SSE-drop / back-navigation scenarios).
+      const shouldRefresh =
+        this._episodesNeedRefresh ||
+        !!focusId ||
+        (now - this._lastConnectedRefresh) > 8000;
+      if (shouldRefresh) {
+        this._lastConnectedRefresh = now;
+        this._loadEpisodes({ focusEpisodeId: focusId }).then((loadedFresh) => {
+          if (loadedFresh) {
+            this._episodesNeedRefresh = false;
+            if (focusId && this._pendingEpisodeFocusId === focusId) {
+              this._pendingEpisodeFocusId = null;
+            }
+          }
+        });
+      }
     }
     this._updateNowPlayingMiniPanel(name);
   }
