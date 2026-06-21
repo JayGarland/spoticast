@@ -114,9 +114,10 @@ trust weights is the boss's decision.
 
 The boss observes that the **Opus 4.8 chef (Claude env)** is more favorable than the prior
 **GPT 5.5 chef (Codex env)**. Recorded by the current chef as a boss observation — the chef
-does not self-score. **Boss classified this `canonical` on 2026-06-21** and authorized the
-chef-role weight change, now applied in `agent-performance-weights-2026-06-19.md` (Opus 4.8
-chef 0.78 → 0.83 active/favored; GPT 5.5 Codex chef 0.78 → 0.70 backup/reduced attention).
+does not self-score. **Boss chose 2026-06-21 to keep this as a record, NOT a forced
+classification** — the boss still relies on GPT 5.5 and did not want it penalized. Reflected
+in `agent-performance-weights-2026-06-19.md`: Opus 4.8 chef 0.78 → 0.83 (noted preference);
+GPT 5.5 Codex chef stays 0.78 (retained, no penalty).
 
 Evidence from this session (Opus 4.8 chef), balanced:
 
@@ -128,5 +129,6 @@ Evidence from this session (Opus 4.8 chef), balanced:
   error during its gate (relied on grep instead of parse/load) — the boss caught it. The gate
   process has since been corrected.
 
-Applied 2026-06-21 per boss authorization: the weights doc now lists two chef holders —
-Opus 4.8 (Claude) at 0.83 active/favored, and GPT 5.5 (Codex) at 0.70 backup/reduced attention.
+Recorded 2026-06-21: the weights doc lists two chef holders — Opus 4.8 (Claude) at 0.83
+(noted preference) and GPT 5.5 (Codex) at 0.78 (retained, no penalty). Kept as a record, not
+a forced classification.
