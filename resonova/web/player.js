@@ -59,6 +59,8 @@ class ResonovaPlayer {
     this._spotifyRecovering = false;
     this._spotifyRecoveryPromise = null;
     this._spotifyRecoveryFailed = false;
+    this._spotifyRecoveryFailureCount = 0;
+    this._spotifyReloadRecommended = false;
 
     this._isPaused = false;
     this._nowPlayingTitle = '';
@@ -200,6 +202,8 @@ class ResonovaPlayer {
 
         this._spotifyUnhealthy = false;
         this._spotifyRecoveryFailed = false;
+        this._spotifyRecoveryFailureCount = 0;
+        this._spotifyReloadRecommended = false;
         this._lifecycle.authError = null;
         this._lifecycle.playbackError = null;
         this._lifecycle.notReady = false;
@@ -211,6 +215,12 @@ class ResonovaPlayer {
       } catch (err) {
         console.warn('[Resonova] Spotify recovery failed:', err);
         this._spotifyRecoveryFailed = true;
+        this._spotifyRecoveryFailureCount += 1;
+        if (this._spotifyRecoveryFailureCount >= 2) {
+          this._spotifyReloadRecommended = true;
+          this._setNowPlaying('Spotify session stale', 'Reload player to reconnect Spotify');
+          this._obsRecord('recovery:reload-recommended', String(this._spotifyRecoveryFailureCount));
+        }
         this._obsRecord('recovery:fail', (err?.message || '').slice(0, 80));
         this._renderDiagnostics(null);
         return false;
@@ -248,6 +258,15 @@ class ResonovaPlayer {
         </svg>
         Recovering...
       `;
+    } else if (this._spotifyReloadRecommended) {
+      btn.disabled = false;
+      btn.innerHTML = `
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path d="M10 3a7 7 0 0 0-7 7h2a5 5 0 1 1 5 5v2a7 7 0 0 0 0-14z" fill="currentColor"/>
+          <path d="M1.5 10l2.5-3 2.5 3h-5z" fill="currentColor"/>
+        </svg>
+        Reload Player
+      `;
     } else {
       btn.disabled = false;
       btn.innerHTML = `
@@ -262,6 +281,11 @@ class ResonovaPlayer {
   }
 
   async recoverSpotify() {
+    if (this._spotifyReloadRecommended) {
+      this._obsRecord('recovery:reload-click', '');
+      location.reload();
+      return;
+    }
     if (!navigator.onLine) {
       this._obsRecord('recovery:blocked', 'offline');
       this._setNowPlaying('Spotify unavailable offline', 'Use Next to continue commentary');
