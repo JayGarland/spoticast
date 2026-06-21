@@ -95,6 +95,11 @@
 
         <a href="/auth/spotify" class="btn btn-primary">Connect Spotify</a>
 
+        <div class="landing-consent">
+          <p class="landing-consent-item">🎵 <strong>Saved music</strong> — Resonova reads the tracks in your library to learn the artists and styles you keep coming back to. It never adds, removes, or changes anything.</p>
+          <p class="landing-consent-item">👥 <strong>Followed artists</strong> — Resonova sees who you follow to understand your favourite artists. Read-only; your follows are never changed.</p>
+        </div>
+
         <p class="landing-prereq">
           Requires Spotify Premium for browser playback
         </p>
@@ -142,7 +147,7 @@
         </div>
       </div>
 
-      <!-- Memory panel — inspect + reset (Slice One); hidden until profile loads -->
+      <!-- Memory panel — inspect + reset (Slice One); Refresh + toggle + pin/delete (Slice Two) -->
       <div class="service-row" id="memory-widget" style="display:none">
         <div class="service-pill" id="memory-pill">
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
@@ -151,6 +156,7 @@
           </svg>
           <span id="memory-pill-label">Memory</span>
           <button class="service-pill-action" id="memory-inspect-btn" type="button">inspect</button>
+          <button class="service-pill-action" id="memory-refresh-btn" type="button" title="Refresh from Spotify library">refresh</button>
           <button class="service-pill-action" id="memory-clear-btn" type="button" style="display:none">clear</button>
         </div>
       </div>
@@ -158,7 +164,7 @@
       <!-- Memory detail panel (expanded inline below the pill) -->
       <div class="memory-panel" id="memory-panel" style="display:none">
         <div class="memory-panel-inner" id="memory-panel-inner">
-          <p class="memory-empty-hint" id="memory-empty-hint" style="display:none">No memory yet — it builds after your first cast.</p>
+          <p class="memory-empty-hint" id="memory-empty-hint" style="display:none">No memory yet — connect Spotify and click "refresh", or generate a cast.</p>
           <div id="memory-taste-section" style="display:none">
             <div class="memory-section-title">Taste profile</div>
             <div id="memory-taste-rows"></div>
@@ -172,6 +178,10 @@
             <div id="memory-memories-rows"></div>
           </div>
           <div class="memory-actions">
+            <label class="memory-toggle-label">
+              <input type="checkbox" id="memory-enabled-toggle" checked>
+              <span>Memory enabled</span>
+            </label>
             <button class="btn btn-ghost btn-sm" id="memory-close-btn" type="button">close</button>
             <button class="btn btn-ghost btn-sm memory-clear-action" id="memory-clear-action-btn" type="button">Clear memory</button>
           </div>
@@ -404,6 +414,27 @@
 
       <!-- Attribution -->
       <div class="attribution">Commentary by Gemini · Music by Spotify</div>
+
+      <!-- Feedback panel (shown when episode is done or playing) -->
+      <div class="feedback-panel" id="feedback-panel" style="display:none">
+        <div class="feedback-heading">How was this cast?</div>
+        <div class="feedback-thumbs">
+          <button class="feedback-thumb" id="feedback-up-btn" title="Thumbs up" aria-label="Thumbs up">👍</button>
+          <button class="feedback-thumb" id="feedback-down-btn" title="Thumbs down" aria-label="Thumbs down">👎</button>
+        </div>
+        <div class="feedback-tags" id="feedback-tags" style="display:none">
+          <button class="feedback-tag" data-tag="too long">too long</button>
+          <button class="feedback-tag" data-tag="too shallow">too shallow</button>
+          <button class="feedback-tag" data-tag="too generic">too generic</button>
+          <button class="feedback-tag" data-tag="wrong vibe">wrong vibe</button>
+          <button class="feedback-tag" data-tag="good story">good story</button>
+          <button class="feedback-tag" data-tag="good analysis">good analysis</button>
+        </div>
+        <div class="feedback-submit-row" id="feedback-submit-row" style="display:none">
+          <button class="btn btn-ghost btn-sm" id="feedback-submit-btn" type="button">Send feedback</button>
+          <span class="feedback-sent-msg" id="feedback-sent-msg" style="display:none">✓ Thanks!</span>
+        </div>
+      </div>
 
     </div>
 

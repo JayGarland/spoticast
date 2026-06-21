@@ -725,6 +725,7 @@ class ResonovaPlayer {
     this._loadLibrary();
     this._initLastFM();
     this._initMemory();
+    this._initFeedback();
     this._initHistoryNav();
     this._initMediaSessionHandlers();
 
@@ -850,6 +851,25 @@ class ResonovaPlayer {
         }
       });
 
+      document.getElementById('memory-refresh-btn').addEventListener('click', async () => {
+        const btn = document.getElementById('memory-refresh-btn');
+        btn.textContent = '…';
+        btn.disabled = true;
+        try {
+          const updated = await this._apiFetch('/api/profile/refresh', { method: 'POST' });
+          this._updateMemoryPillLabel(updated);
+          const panel = document.getElementById('memory-panel');
+          if (panel.style.display !== 'none') {
+            this._renderMemoryPanel(updated);
+          }
+        } catch (e) {
+          console.warn('Profile refresh failed:', e);
+        } finally {
+          btn.textContent = 'refresh';
+          btn.disabled = false;
+        }
+      });
+
       document.getElementById('memory-close-btn').addEventListener('click', () => {
         document.getElementById('memory-panel').style.display = 'none';
         document.getElementById('memory-inspect-btn').textContent = 'inspect';
@@ -899,6 +919,8 @@ class ResonovaPlayer {
       (taste.top_artists || []).length ||
       (taste.recurring_styles || []).length ||
       (taste.favorite_eras || []).length ||
+      (taste.saved_library_artists || []).length ||
+      (taste.followed_artists || []).length ||
       (prefs.tone || []).length ||
       (prefs.avoid || []).length ||
       (prefs.loved_patterns || []).length ||
@@ -906,6 +928,25 @@ class ResonovaPlayer {
     );
 
     document.getElementById('memory-empty-hint').style.display = hasAny ? 'none' : '';
+
+    // ── Memory enabled toggle ─────────────────────────────────────────────
+    const toggle = document.getElementById('memory-enabled-toggle');
+    if (toggle) {
+      toggle.checked = profile.memory_enabled !== false;
+      toggle.onchange = async () => {
+        try {
+          const updated = await this._apiFetch('/api/profile', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ memory_enabled: toggle.checked }),
+          });
+          this._updateMemoryPillLabel(updated);
+        } catch (e) {
+          console.warn('Memory toggle failed:', e);
+          toggle.checked = !toggle.checked; // revert
+        }
+      };
+    }
 
     // ── Taste profile rows ─────────────────────────────────────────────────
     const tasteSection = document.getElementById('memory-taste-section');
@@ -915,7 +956,9 @@ class ResonovaPlayer {
       ['top artists', taste.top_artists],
       ['recurring styles', taste.recurring_styles],
       ['favourite eras', taste.favorite_eras],
-      ['recent shifts', taste.recent_shifts],
+      ['recent listening', taste.recent_shifts],
+      ['library regulars', taste.saved_library_artists],
+      ['followed artists', taste.followed_artists],
       ['playlist patterns', taste.playlist_patterns],
     ];
     let hasTaste = false;
@@ -950,7 +993,7 @@ class ResonovaPlayer {
     }
     prefsSection.style.display = hasPrefs ? '' : 'none';
 
-    // ── Memories list ──────────────────────────────────────────────────────
+    // ── Memories list (with pin/delete) ────────────────────────────────────
     const memoriesSection = document.getElementById('memory-memories-section');
     const memoriesRows = document.getElementById('memory-memories-rows');
     memoriesRows.innerHTML = '';
@@ -967,14 +1010,125 @@ class ResonovaPlayer {
         const pinBadge = m.pinned ? '<span class="memory-badge pinned">pinned</span>' : '';
         const confBadge = m.confidence ? `<span class="memory-badge ${m.confidence}">${m.confidence}</span>` : '';
         const srcBadge = m.source ? `<span class="memory-badge">${m.source}</span>` : '';
-        item.innerHTML = `<span style="flex:1">${m.text}</span>${pinBadge}${confBadge}${srcBadge}`;
+        item.innerHTML = `
+          <span style="flex:1">${m.text}</span>
+          ${pinBadge}${confBadge}${srcBadge}
+          <button class="memory-action-btn" data-action="pin" data-id="${m.id}" data-pinned="${m.pinned ? '1' : '0'}" title="${m.pinned ? 'Unpin' : 'Pin'}">${m.pinned ? '★' : '☆'}</button>
+          <button class="memory-action-btn" data-action="delete" data-id="${m.id}" title="Delete">✕</button>
+        `;
         memoriesRows.appendChild(item);
       }
+
+      // Delegate pin/delete clicks
+      memoriesRows.addEventListener('click', async (e) => {
+        const btn = e.target.closest('[data-action]');
+        if (!btn) return;
+        const action = btn.dataset.action;
+        const id = btn.dataset.id;
+        try {
+          let body = {};
+          if (action === 'pin') {
+            const isPinned = btn.dataset.pinned === '1';
+            body = { pin_memory_id: id, pin_value: !isPinned };
+          } else if (action === 'delete') {
+            body = { delete_memory_id: id };
+          }
+          const updated = await this._apiFetch('/api/profile', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          this._updateMemoryPillLabel(updated);
+          this._renderMemoryPanel(updated);
+        } catch (e2) {
+          console.warn('Memory action failed:', e2);
+        }
+      }, { once: true });
     }
     memoriesSection.style.display = memories.length ? '' : 'none';
   }
 
-  _loadSpotifySDK() {
+  // ── Feedback channel ─────────────────────────────────────────────────────
+
+  _initFeedback() {
+    this._feedbackVerdict = null;
+    this._feedbackTags = new Set();
+
+    const panel = document.getElementById('feedback-panel');
+    const upBtn = document.getElementById('feedback-up-btn');
+    const downBtn = document.getElementById('feedback-down-btn');
+    const tagsEl = document.getElementById('feedback-tags');
+    const submitRow = document.getElementById('feedback-submit-row');
+    const submitBtn = document.getElementById('feedback-submit-btn');
+    const sentMsg = document.getElementById('feedback-sent-msg');
+
+    if (!panel) return;
+
+    const setVerdict = (v) => {
+      this._feedbackVerdict = v;
+      upBtn.classList.toggle('feedback-thumb-active', v === 'up');
+      downBtn.classList.toggle('feedback-thumb-active', v === 'down');
+      tagsEl.style.display = '';
+      submitRow.style.display = '';
+    };
+
+    upBtn.addEventListener('click', () => setVerdict('up'));
+    downBtn.addEventListener('click', () => setVerdict('down'));
+
+    tagsEl.querySelectorAll('.feedback-tag').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tag = btn.dataset.tag;
+        if (this._feedbackTags.has(tag)) {
+          this._feedbackTags.delete(tag);
+          btn.classList.remove('feedback-tag-active');
+        } else {
+          this._feedbackTags.add(tag);
+          btn.classList.add('feedback-tag-active');
+        }
+      });
+    });
+
+    submitBtn.addEventListener('click', async () => {
+      if (!this._feedbackVerdict || !this._episodeId) return;
+      submitBtn.disabled = true;
+      try {
+        await this._apiFetch('/api/feedback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            episode_id: this._episodeId,
+            verdict: this._feedbackVerdict,
+            tags: [...this._feedbackTags],
+          }),
+        });
+        sentMsg.style.display = '';
+        submitBtn.style.display = 'none';
+        // Reset state
+        this._feedbackVerdict = null;
+        this._feedbackTags = new Set();
+        upBtn.classList.remove('feedback-thumb-active');
+        downBtn.classList.remove('feedback-thumb-active');
+        tagsEl.querySelectorAll('.feedback-tag').forEach(b => b.classList.remove('feedback-tag-active'));
+      } catch (e) {
+        console.warn('Feedback submit failed:', e);
+        submitBtn.disabled = false;
+      }
+    });
+  }
+
+  _showFeedbackPanel(episodeId) {
+    const panel = document.getElementById('feedback-panel');
+    if (!panel) return;
+    this._episodeId = episodeId;
+    // Reset sent state
+    const sentMsg = document.getElementById('feedback-sent-msg');
+    const submitBtn = document.getElementById('feedback-submit-btn');
+    if (sentMsg) sentMsg.style.display = 'none';
+    if (submitBtn) { submitBtn.style.display = ''; submitBtn.disabled = false; }
+    panel.style.display = '';
+  }
+
+
     window.onSpotifyWebPlaybackSDKReady = () => this._initSpotifyPlayer();
     const script = document.createElement('script');
     script.src = 'https://sdk.scdn.co/spotify-player.js';
@@ -1282,6 +1436,8 @@ class ResonovaPlayer {
       this._updateProgress();
       this._updateSkipButton();
       this._refreshEpisodesAfterGeneration(episodeId);
+      // Show feedback panel once generation is done
+      if (episodeId) this._showFeedbackPanel(episodeId);
     });
 
     es.addEventListener('error', (e) => {

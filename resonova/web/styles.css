@@ -2143,6 +2143,149 @@ body::after {
   color: rgba(255, 80, 80, 1);
 }
 
+/* ── Landing consent copy (Slice Two) ─────────────────────────────────── */
+.landing-consent {
+  margin-top: 1.5rem;
+  padding: 0.75rem 1rem;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  max-width: 380px;
+  text-align: left;
+}
+
+.landing-consent-item {
+  font-size: 0.65rem;
+  color: var(--cream-mid);
+  line-height: 1.6;
+  margin-bottom: 0.5rem;
+}
+
+.landing-consent-item:last-child {
+  margin-bottom: 0;
+}
+
+/* ── Memory toggle (Slice Two) ────────────────────────────────────────── */
+.memory-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.7rem;
+  color: var(--cream-mid);
+  cursor: pointer;
+  margin-right: auto;
+}
+
+.memory-toggle-label input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
+/* ── Per-memory action buttons (Slice Two) ────────────────────────────── */
+.memory-action-btn {
+  background: none;
+  border: none;
+  color: var(--cream-low);
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 0 0.2rem;
+  line-height: 1;
+  transition: color 0.15s;
+}
+
+.memory-action-btn:hover {
+  color: var(--cream);
+}
+
+/* ── Feedback panel (Slice Two) ───────────────────────────────────────── */
+.feedback-panel {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+
+.feedback-heading {
+  font-size: 0.7rem;
+  color: var(--cream-mid);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.feedback-thumbs {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.feedback-thumb {
+  background: none;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  font-size: 1.2rem;
+  padding: 0.3rem 0.6rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.feedback-thumb:hover {
+  background: var(--accent-low);
+  border-color: var(--accent-mid);
+}
+
+.feedback-thumb-active {
+  background: var(--accent-low);
+  border-color: var(--accent);
+}
+
+.feedback-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.feedback-tag {
+  background: none;
+  border: 1px solid var(--panel-border);
+  border-radius: 20px;
+  color: var(--cream-mid);
+  font-size: 0.65rem;
+  padding: 0.2rem 0.6rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.feedback-tag:hover {
+  background: var(--accent-low);
+  color: var(--cream);
+  border-color: var(--accent-mid);
+}
+
+.feedback-tag-active {
+  background: var(--accent-low);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.feedback-submit-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.feedback-sent-msg {
+  font-size: 0.7rem;
+  color: var(--green);
+}
+
+
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
