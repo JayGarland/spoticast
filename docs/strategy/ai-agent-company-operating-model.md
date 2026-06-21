@@ -14,6 +14,7 @@ Tool form still matters:
 
 - Workspace/CLI-capable agents can inspect the local repo, git state, diffs, handoffs, tests, and local files directly.
 - Web-UI agents may be useful for higher-level discussion, product thinking, review, or specialist critique, but they normally need supplied context or Chrome/MCP-style coordination because they do not automatically have local repo access.
+- Agents may use available MCP/server tools, including Chrome MCP or browser tools, when they support inspection, validation, web-UI coordination, or evidence gathering. Tool access does not change role authority: managers, auditors, reviewers, recruiters, and specialists still do not self-approve work.
 
 ## Current Company Roles
 

@@ -27,6 +27,7 @@ When reviewing agent performance, also read:
 - Avoid over-documenting. Prefer short decision records, job specs, briefs, and handoffs over large process manuals.
 - Chef has standing authorization to commit validated scoped work inside an approved task; non-trivial product, architecture, budget, release, PR, or pipeline changes require chef-boss discussion first.
 - When multiple agents or workstreams run at the same time, use separate branches or isolated worktrees where possible, and route parallel implementation work through PR or PR-like review before merge.
+- Agents may use available MCP/server tools, including Chrome MCP or browser tools, when useful for inspection, validation, web-UI coordination, or evidence gathering. Tool use must stay inside role authority and task scope.
 
 ## Default Behavior
 
