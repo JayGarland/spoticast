@@ -23,6 +23,10 @@ to:
 personal AI radio companion that remembers the owner and improves over time
 ```
 
+Related release-positioning note:
+
+- `docs/strategy/release-access-and-memory-positioning-brief.md`
+
 ## Owner Decision
 
 Approved direction:
@@ -93,6 +97,10 @@ Out of scope:
 - Do not break existing episode generation or replay.
 - Do not make the app depend on feedback before it can generate.
 - Keep the profile inspectable and editable by the owner if possible.
+
+Scope note:
+
+These constraints describe the current unreleased MVP and developer stage. They should not be read as a permanent requirement that v0.1 users must self-host, run a local server, or bring their own AI API keys. The durable product principle is inspectable personal memory; the v0.1 target is direct use after Spotify connection.
 
 ## First-Version Product Shape
 
