@@ -9,6 +9,7 @@ Before doing company-role, recruitment, manager, auditor, or chef-level work, re
 - `docs/strategy/ai-agent-company-operating-model.md`
 - `docs/strategy/ai-agent-role-job-specs.md`
 - `docs/strategy/ai-agent-recruitment-execution-guide.md`
+- `docs/strategy/boss-profile.md`
 
 When reviewing agent performance, also read:
 

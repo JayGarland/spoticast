@@ -10,6 +10,7 @@ Related docs:
 
 - `docs/strategy/ai-agent-company-operating-model.md`
 - `docs/strategy/ai-agent-recruitment-execution-guide.md`
+- `docs/strategy/boss-profile.md`
 
 ## Common Requirements For All Hired Agents
 
@@ -29,6 +30,12 @@ Handoff expectation:
 - Manager-level implementation work currently requires a handoff.
 - Company-level role handoffs are not required after every task.
 - Company-level handoff should be written only for role transition, major policy change, recruitment review, or incident/release review.
+
+## Boss / CEO Context For Agents
+
+The boss is not a recruitable agent role. No agent should treat this document as permission to become, replace, or simulate the boss.
+
+Agents should read `docs/strategy/boss-profile.md` to understand the boss's authority, habits, and expectations before doing boss-facing, company-role, recruitment, manager, auditor, or chef-level work.
 
 ## Job Spec: Internal Auditor / Product Reviewer
 

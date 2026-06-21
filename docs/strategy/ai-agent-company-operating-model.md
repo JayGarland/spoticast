@@ -28,6 +28,7 @@ Notes:
 - The boss has limited time, energy, and memory, so agent work should reduce cognitive load.
 - The boss should receive concise decision briefs, not raw implementation noise.
 - The boss controls budget for API credits, subscriptions, and agent usage. No agent is free.
+- Agents should read `docs/strategy/boss-profile.md` when doing boss-facing, company-role, recruitment, manager, auditor, or chef-level work.
 
 ### Chef
 
@@ -67,6 +68,26 @@ Authority:
 - Chef may prepare or create PRs and pipeline changes only under the company's authority model.
 - Chef must discuss non-trivial or decisional actions with the boss before acting.
 - Chef must not let manager agents approve their own work.
+
+## Specialized Chef Policy
+
+Current default: one active chef plus specialist agents is sufficient for now. Specialized chefs should be added only when the company has evidence that one general chef is becoming a real bottleneck or risk.
+
+Add a specialized chef only if one of these becomes true:
+
+- Active chef becomes the bottleneck for multiple parallel workstreams.
+- Product strategy and technical delivery conflict too often.
+- Boss receives too much raw noise again.
+- Chef repeatedly misses product or UX risks.
+- Codex budget or availability becomes painful.
+- Manager or auditor outputs pile up ungated.
+
+Possible future specialized chefs:
+
+- Technical Chef / CTO Chef: codebase, architecture, commits, PRs, and managers.
+- Product Chef / CPO Chef: roadmap, UX, positioning, market benchmark, and product reviews.
+- Quality / Release Chef: release gates, QA matrix, regression risk, and customer readiness.
+- Recruiter / People Ops Chef: agent hiring, firing, restrictions, and performance review.
 
 ### Manager
 
