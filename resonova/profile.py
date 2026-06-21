@@ -53,6 +53,8 @@ def _empty_profile() -> dict:
             "favorite_eras": [],
             "recent_shifts": [],
             "playlist_patterns": [],
+            "saved_library_artists": [],
+            "followed_artists": [],
         },
         "commentary_preferences": {
             "tone": [],
@@ -79,6 +81,10 @@ def load_profile() -> dict:
         for key in ("taste_profile", "commentary_preferences", "memories", "sources"):
             if key not in data:
                 data[key] = empty[key]
+        # Forward-compat: fill new taste_profile sub-keys (Slice Two)
+        for sub in ("saved_library_artists", "followed_artists"):
+            if sub not in data.get("taste_profile", {}):
+                data["taste_profile"][sub] = []
         return data
     except Exception:
         return _empty_profile()
@@ -121,7 +127,8 @@ def _enforce_caps(profile: dict) -> dict:
     """
     taste = profile.get("taste_profile", {})
     for field in ("top_artists", "recurring_styles", "favorite_eras",
-                  "recent_shifts", "playlist_patterns"):
+                  "recent_shifts", "playlist_patterns",
+                  "saved_library_artists", "followed_artists"):
         if isinstance(taste.get(field), list):
             taste[field] = taste[field][:_MAX_LIST_ITEMS]
 
@@ -202,8 +209,332 @@ def summarize_context(context: dict[str, Any], profile: dict | None = None) -> d
 
 
 # ---------------------------------------------------------------------------
-# Prompt helper: select memories for the compact prompt block
+# Saved-tracks + followed-artists summarizer (Slice Two)
 # ---------------------------------------------------------------------------
+
+_RECENT_TRACK_WINDOW = 50  # most-recent N additions = "current state"
+
+
+def summarize_library(
+    saved_tracks: list[dict],
+    followed_artists: list[str],
+    profile: dict | None = None,
+) -> dict:
+    """Update the profile from saved tracks and followed artists.
+
+    saved_tracks: list of {artist_names: list[str], added_at: str}, NEWEST FIRST.
+    followed_artists: list of artist name strings.
+
+    Design rule (boss-directed):
+    - The most-recent _RECENT_TRACK_WINDOW tracks signal CURRENT/EVOLVING taste
+      → feeds taste_profile.recent_shifts with a concise artist summary.
+    - The older remainder represent DURABLE long-term taste
+      → feeds taste_profile.saved_library_artists.
+    - followed_artists → taste_profile.followed_artists (explicit affinity).
+
+    Returns the updated profile dict (caller must call save_profile to persist).
+    """
+    if profile is None:
+        profile = load_profile()
+
+    taste = profile.setdefault("taste_profile", {
+        "top_artists": [], "recurring_styles": [], "favorite_eras": [],
+        "recent_shifts": [], "playlist_patterns": [],
+        "saved_library_artists": [], "followed_artists": [],
+    })
+    sources = profile.setdefault("sources", {
+        "spotify": {"connected": False, "scopes_used": [], "last_refreshed_at": None},
+        "lastfm": {"connected": False, "last_refreshed_at": None},
+        "resonova": {"saved_cast_count": 0, "feedback_count": 0},
+    })
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    if saved_tracks:
+        recent_tracks = saved_tracks[:_RECENT_TRACK_WINDOW]
+        older_tracks = saved_tracks[_RECENT_TRACK_WINDOW:]
+
+        # Recent: deduplicated artist names (preserve order, newest-addition first)
+        recent_artists: list[str] = []
+        seen: set[str] = set()
+        for t in recent_tracks:
+            for name in t.get("artist_names", []):
+                if name and name not in seen:
+                    seen.add(name)
+                    recent_artists.append(name)
+
+        if recent_artists:
+            existing_shifts = taste.get("recent_shifts") or []
+            merged_shifts = list(dict.fromkeys(
+                recent_artists + [a for a in existing_shifts if a not in recent_artists]
+            ))
+            taste["recent_shifts"] = merged_shifts[:_MAX_LIST_ITEMS]
+
+        # Older tracks → saved_library_artists (durable long-term taste)
+        durable_artists: list[str] = []
+        seen_d: set[str] = set()
+        for t in older_tracks:
+            for name in t.get("artist_names", []):
+                if name and name not in seen_d:
+                    seen_d.add(name)
+                    durable_artists.append(name)
+
+        if durable_artists:
+            existing_lib = taste.get("saved_library_artists") or []
+            merged_lib = list(dict.fromkeys(
+                durable_artists + [a for a in existing_lib if a not in durable_artists]
+            ))
+            taste["saved_library_artists"] = merged_lib[:_MAX_LIST_ITEMS]
+
+    # Followed artists → explicit affinity
+    if followed_artists:
+        existing_followed = taste.get("followed_artists") or []
+        merged_followed = list(dict.fromkeys(
+            followed_artists + [a for a in existing_followed if a not in followed_artists]
+        ))
+        taste["followed_artists"] = merged_followed[:_MAX_LIST_ITEMS]
+
+    # Update Spotify source stamp with new scopes
+    spotify_src = sources.setdefault("spotify", {})
+    spotify_src["connected"] = True
+    spotify_src["last_refreshed_at"] = now_iso
+    used = set(spotify_src.get("scopes_used") or [])
+    if saved_tracks is not None:
+        used.add("user-library-read")
+    if followed_artists is not None:
+        used.add("user-follow-read")
+    spotify_src["scopes_used"] = sorted(used)
+
+    profile["profile_version"] = _PROFILE_VERSION
+    return profile
+
+
+# ---------------------------------------------------------------------------
+# Saved-cast-history summarizer (Slice Two, Section D)
+# ---------------------------------------------------------------------------
+
+def summarize_saved_casts(profile: dict | None = None) -> dict:
+    """Derive patterns from the existing saved episode library.
+
+    Reads episodes via episodes.list_episodes() — zero new scopes or API calls.
+    - Sets sources.resonova.saved_cast_count to the real count.
+    - Derives playlist_patterns from episode naming patterns.
+
+    Returns the updated profile dict (caller must call save_profile to persist).
+    """
+    if profile is None:
+        profile = load_profile()
+
+    from resonova import episodes as episodes_store
+
+    taste = profile.setdefault("taste_profile", {
+        "top_artists": [], "recurring_styles": [], "favorite_eras": [],
+        "recent_shifts": [], "playlist_patterns": [],
+        "saved_library_artists": [], "followed_artists": [],
+    })
+    sources = profile.setdefault("sources", {
+        "spotify": {"connected": False, "scopes_used": [], "last_refreshed_at": None},
+        "lastfm": {"connected": False, "last_refreshed_at": None},
+        "resonova": {"saved_cast_count": 0, "feedback_count": 0},
+    })
+
+    eps = episodes_store.list_episodes()
+    resonova_src = sources.setdefault("resonova", {"saved_cast_count": 0, "feedback_count": 0})
+    resonova_src["saved_cast_count"] = len(eps)
+
+    if eps:
+        # Derive light patterns: playlist names that appear more than once
+        from collections import Counter
+        playlist_name_counts: Counter = Counter()
+        for ep in eps:
+            pl_name = ep.get("playlist_name", "").strip()
+            if pl_name and pl_name not in ("Custom tracks", ""):
+                playlist_name_counts[pl_name] += 1
+
+        patterns: list[str] = []
+        for name, count in playlist_name_counts.most_common(5):
+            if count >= 2:
+                patterns.append(f"frequently casts from '{name}'")
+            elif count == 1:
+                patterns.append(f"cast from '{name}'")
+
+        if patterns:
+            existing_patterns = taste.get("playlist_patterns") or []
+            # Remove stale cast-derived patterns before re-deriving
+            kept = [p for p in existing_patterns if not p.startswith(("frequently casts from", "cast from"))]
+            merged = list(dict.fromkeys(patterns + kept))
+            taste["playlist_patterns"] = merged[:_MAX_LIST_ITEMS]
+
+    profile["profile_version"] = _PROFILE_VERSION
+    return profile
+
+
+# ---------------------------------------------------------------------------
+# Feedback channel (Slice Two, Section E)
+# ---------------------------------------------------------------------------
+
+_FEEDBACK_PATH = _PROFILE_DIR / "feedback.jsonl"
+
+FEEDBACK_TAGS = frozenset([
+    "too long", "too shallow", "too generic",
+    "wrong vibe", "good story", "good analysis",
+])
+
+_FEEDBACK_FOLD_THRESHOLD = 3  # occurrences before folding into high-confidence preference
+
+
+def append_feedback(event: dict) -> None:
+    """Append a feedback event to feedback.jsonl (append-only)."""
+    _PROFILE_DIR.mkdir(parents=True, exist_ok=True)
+    with _FEEDBACK_PATH.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(event) + "\n")
+
+
+def _load_feedback() -> list[dict]:
+    """Load all feedback events; return [] on any error."""
+    if not _FEEDBACK_PATH.exists():
+        return []
+    events: list[dict] = []
+    try:
+        for line in _FEEDBACK_PATH.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line:
+                try:
+                    events.append(json.loads(line))
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    return events
+
+
+def fold_feedback_into_profile(profile: dict | None = None) -> dict:
+    """Read feedback.jsonl and fold repeated signals into commentary_preferences.
+
+    Override precedence: pinned > feedback(high) > inferred(spotify/lastfm/saved_cast).
+    Inferred memories are SHADOWED (never deleted) by higher-precedence feedback prefs.
+
+    Returns the updated profile dict (caller must call save_profile to persist).
+    """
+    if profile is None:
+        profile = load_profile()
+
+    events = _load_feedback()
+    if not events:
+        return profile
+
+    prefs = profile.setdefault("commentary_preferences", {
+        "tone": [], "depth": "balanced", "avoid": [], "loved_patterns": [],
+    })
+    sources = profile.setdefault("sources", {
+        "spotify": {"connected": False, "scopes_used": [], "last_refreshed_at": None},
+        "lastfm": {"connected": False, "last_refreshed_at": None},
+        "resonova": {"saved_cast_count": 0, "feedback_count": 0},
+    })
+
+    resonova_src = sources.setdefault("resonova", {"saved_cast_count": 0, "feedback_count": 0})
+    resonova_src["feedback_count"] = len(events)
+
+    # Tally tags across all events
+    from collections import Counter
+    down_tag_counts: Counter = Counter()
+    up_tag_counts: Counter = Counter()
+    for ev in events:
+        verdict = ev.get("verdict", "")
+        for tag in ev.get("tags", []):
+            if tag in FEEDBACK_TAGS:
+                if verdict == "down":
+                    down_tag_counts[tag] += 1
+                elif verdict == "up":
+                    up_tag_counts[tag] += 1
+
+    # Map down-tags to avoid patterns
+    _TAG_TO_AVOID = {
+        "too long": "long intros",
+        "too shallow": "shallow analysis",
+        "too generic": "generic commentary",
+        "wrong vibe": "wrong-vibe segments",
+    }
+    _TAG_TO_LOVED = {
+        "good story": "storytelling segments",
+        "good analysis": "deep analysis",
+    }
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    memories: list[dict] = profile.setdefault("memories", [])
+    existing_mem_texts = {m["text"] for m in memories}
+
+    avoid = list(prefs.get("avoid") or [])
+    loved = list(prefs.get("loved_patterns") or [])
+
+    for tag, pattern in _TAG_TO_AVOID.items():
+        count = down_tag_counts[tag]
+        if count >= _FEEDBACK_FOLD_THRESHOLD:
+            if pattern not in avoid:
+                avoid.append(pattern)
+            # Add a high-confidence memory (feedback source)
+            mem_text = f"Listener dislikes: {pattern} (from feedback)"
+            if mem_text not in existing_mem_texts:
+                existing_mem_texts.add(mem_text)
+                memories.append({
+                    "id": f"feedback_{tag.replace(' ', '_')}",
+                    "text": mem_text,
+                    "source": "feedback",
+                    "confidence": "high",
+                    "pinned": False,
+                    "created_at": now_iso,
+                })
+
+    for tag, pattern in _TAG_TO_LOVED.items():
+        count = up_tag_counts[tag]
+        if count >= _FEEDBACK_FOLD_THRESHOLD:
+            if pattern not in loved:
+                loved.append(pattern)
+            mem_text = f"Listener loves: {pattern} (from feedback)"
+            if mem_text not in existing_mem_texts:
+                existing_mem_texts.add(mem_text)
+                memories.append({
+                    "id": f"feedback_{tag.replace(' ', '_')}",
+                    "text": mem_text,
+                    "source": "feedback",
+                    "confidence": "high",
+                    "pinned": False,
+                    "created_at": now_iso,
+                })
+
+    prefs["avoid"] = avoid[:_MAX_LIST_ITEMS]
+    prefs["loved_patterns"] = loved[:_MAX_LIST_ITEMS]
+    profile["memories"] = memories
+
+    profile["profile_version"] = _PROFILE_VERSION
+    return profile
+
+
+# ---------------------------------------------------------------------------
+# Profile PATCH helpers (Slice Two, Section F)
+# ---------------------------------------------------------------------------
+
+def set_memory_enabled(profile: dict, enabled: bool) -> dict:
+    """Toggle memory_enabled on the profile."""
+    profile["memory_enabled"] = bool(enabled)
+    return profile
+
+
+def pin_memory(profile: dict, memory_id: str, pinned: bool) -> dict:
+    """Set pinned state on a memory by id. No-op if not found."""
+    for m in profile.get("memories", []):
+        if m.get("id") == memory_id:
+            m["pinned"] = bool(pinned)
+            break
+    return profile
+
+
+def delete_memory(profile: dict, memory_id: str) -> dict:
+    """Remove a memory by id. No-op if not found."""
+    profile["memories"] = [
+        m for m in profile.get("memories", []) if m.get("id") != memory_id
+    ]
+    return profile
 
 def select_memories_for_prompt(profile: dict, limit: int = 5) -> list[dict]:
     """Return up to *limit* highest-value memories for prompt injection.
@@ -222,7 +553,8 @@ def profile_has_content(profile: dict) -> bool:
     has_taste = any(
         isinstance(taste.get(f), list) and taste[f]
         for f in ("top_artists", "recurring_styles", "favorite_eras",
-                  "recent_shifts", "playlist_patterns")
+                  "recent_shifts", "playlist_patterns",
+                  "saved_library_artists", "followed_artists")
     )
     has_prefs = any(
         isinstance(profile.get("commentary_preferences", {}).get(f), list)

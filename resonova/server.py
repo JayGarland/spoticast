@@ -6,6 +6,8 @@ import asyncio
 import json
 import logging
 import time
+from datetime import datetime, timezone
+from uuid import uuid4
 try:
     from uuid import uuid7  # type: ignore[attr-defined]  # Python 3.14+
 except ImportError:
@@ -142,9 +144,27 @@ def _select_playlist_tracks_for_episode(tracks: list[Any], playlist_uri: str) ->
     return variety_store.select_tracks_for_episode(tracks, playlist_uri, settings.max_tracks)
 
 
-# ---------------------------------------------------------------------------
-# Routes
-# ---------------------------------------------------------------------------
+async def _auto_refresh_profile_on_connect() -> None:
+    """Non-blocking: populate profile from library after connect, if profile is empty."""
+    try:
+        profile = profile_store.load_profile()
+        # Only auto-refresh if no Spotify-derived content yet
+        spotify_src = profile.get("sources", {}).get("spotify", {})
+        if spotify_src.get("connected") and profile_store.profile_has_content(profile):
+            return
+        loop = asyncio.get_event_loop()
+        saved_tracks = await loop.run_in_executor(None, spotify_api.fetch_saved_tracks)
+        followed_artists = await loop.run_in_executor(None, spotify_api.fetch_followed_artists)
+        profile = profile_store.summarize_library(saved_tracks, followed_artists, profile)
+        profile = profile_store.summarize_saved_casts(profile)
+        profile = profile_store.fold_feedback_into_profile(profile)
+        profile_store.save_profile(profile)
+        logger.info("Auto-refreshed profile from Spotify library on connect")
+    except Exception as exc:
+        logger.warning("Auto-refresh profile on connect failed (non-blocking): %s", exc)
+
+
+
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_index():
@@ -178,6 +198,8 @@ async def auth_callback(request: Request, code: str | None = None, error: str | 
             f"<h1>Auth failed</h1><p>{error}</p>", status_code=400
         )
     spotify_api.handle_callback(code, _resolve_redirect_uri(request))
+    # Auto-refresh profile from library if no Spotify-derived content yet (non-blocking)
+    asyncio.create_task(_auto_refresh_profile_on_connect())
     return RedirectResponse("/?auth=success")
 
 
@@ -301,7 +323,89 @@ async def api_delete_profile():
     return JSONResponse(empty)
 
 
-class GenerateRequest(BaseModel):
+class ProfilePatchRequest(BaseModel):
+    memory_enabled: bool | None = None
+    pin_memory_id: str | None = None
+    pin_value: bool | None = None
+    delete_memory_id: str | None = None
+
+
+@app.patch("/api/profile")
+async def api_patch_profile(req: ProfilePatchRequest):
+    """Patch memory_enabled, pin a memory, or delete a memory."""
+    profile = profile_store.load_profile()
+    if req.memory_enabled is not None:
+        profile = profile_store.set_memory_enabled(profile, req.memory_enabled)
+    if req.pin_memory_id is not None:
+        pinned = req.pin_value if req.pin_value is not None else True
+        profile = profile_store.pin_memory(profile, req.pin_memory_id, pinned)
+    if req.delete_memory_id is not None:
+        profile = profile_store.delete_memory(profile, req.delete_memory_id)
+    profile_store.save_profile(profile)
+    return JSONResponse(profile)
+
+
+@app.post("/api/profile/refresh")
+async def api_profile_refresh():
+    """Fetch saved tracks + followed artists, update the profile. No cast generated."""
+    token = spotify_api.get_current_token()
+    if token is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    loop = asyncio.get_event_loop()
+    try:
+        saved_tracks, followed_artists = await asyncio.gather(
+            loop.run_in_executor(None, spotify_api.fetch_saved_tracks),
+            loop.run_in_executor(None, spotify_api.fetch_followed_artists),
+        )
+        profile = profile_store.load_profile()
+        profile = profile_store.summarize_library(saved_tracks, followed_artists, profile)
+        profile = profile_store.summarize_saved_casts(profile)
+        profile = profile_store.fold_feedback_into_profile(profile)
+        profile_store.save_profile(profile)
+        return JSONResponse(profile)
+    except Exception as exc:
+        logger.exception("Profile refresh failed")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+class FeedbackRequest(BaseModel):
+    episode_id: str
+    segment_index: int | None = None
+    verdict: str  # "up" or "down"
+    tags: list[str] = []
+    note: str | None = None
+
+
+@app.post("/api/feedback")
+async def api_feedback(req: FeedbackRequest):
+    """Record feedback for an episode and fold into profile preferences."""
+    if req.verdict not in ("up", "down"):
+        raise HTTPException(status_code=400, detail="verdict must be 'up' or 'down'")
+    valid_tags = [t for t in req.tags if t in profile_store.FEEDBACK_TAGS]
+
+    event = {
+        "id": str(uuid4()),
+        "episode_id": req.episode_id,
+        "segment_index": req.segment_index,
+        "verdict": req.verdict,
+        "tags": valid_tags,
+        "note": req.note,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    profile_store.append_feedback(event)
+
+    # Fold into profile (non-blocking on error)
+    try:
+        profile = profile_store.load_profile()
+        profile = profile_store.fold_feedback_into_profile(profile)
+        profile_store.save_profile(profile)
+    except Exception as fe:
+        logger.warning("Feedback fold failed (non-blocking): %s", fe)
+
+    return JSONResponse({"ok": True, "id": event["id"]})
+
+
+
     playlist_uri: str | None = None
     track_uris: list[str] | None = None
 
@@ -541,11 +645,14 @@ async def _run_generation(job: Job):
             variety_store.save_variety_memory(job.playlist_uri, _playlist_selected_uris)
 
         # Update persistent listener profile (Slice One: context summariser).
+        # Slice Two: also run saved-cast + feedback summarizers.
         # Runs only when memory is enabled; must NOT block or fail generation.
         try:
             _profile = profile_store.load_profile()
             if _profile.get("memory_enabled", True):
                 _profile = profile_store.summarize_context(context, _profile)
+                _profile = profile_store.summarize_saved_casts(_profile)
+                _profile = profile_store.fold_feedback_into_profile(_profile)
                 profile_store.save_profile(_profile)
         except Exception as _profile_exc:
             logger.warning("Profile update failed (non-blocking): %s", _profile_exc)

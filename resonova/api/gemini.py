@@ -332,6 +332,18 @@ def build_prompt(context: dict[str, Any]) -> str:
         if eras:
             mem_lines.append("Taste — favourite eras: " + ", ".join(eras))
 
+        recent_shifts = taste.get("recent_shifts", [])[:5]
+        if recent_shifts:
+            mem_lines.append("Taste — current listening: " + ", ".join(recent_shifts))
+
+        saved_lib = taste.get("saved_library_artists", [])[:5]
+        if saved_lib:
+            mem_lines.append("Taste — library regulars: " + ", ".join(saved_lib))
+
+        followed = taste.get("followed_artists", [])[:5]
+        if followed:
+            mem_lines.append("Taste — followed artists: " + ", ".join(followed))
+
         prefs = persistent_profile.get("commentary_preferences", {})
         if prefs.get("tone"):
             mem_lines.append("Preferred tone: " + ", ".join(prefs["tone"][:3]))

@@ -266,8 +266,87 @@ def fetch_user_context() -> UserContext:
     )
 
 
+def fetch_saved_tracks(limit_total: int = 200) -> list[dict]:
+    """Fetch the user's liked/saved tracks (user-library-read scope).
+
+    Returns a list of dicts with artist_names and added_at, ordered newest-first
+    (Spotify returns them in that order). Capped at *limit_total*.
+    Degrades gracefully on 401/403: returns [].
+    """
+    import logging
+    _log = logging.getLogger(__name__)
+    try:
+        sp = get_client()
+        results: list[dict] = []
+        page_size = 50
+        offset = 0
+        while len(results) < limit_total:
+            batch = sp.current_user_saved_tracks(limit=page_size, offset=offset)
+            if not batch or not batch.get("items"):
+                break
+            for item in batch["items"]:
+                if len(results) >= limit_total:
+                    break
+                track = item.get("track")
+                if not track:
+                    continue
+                results.append({
+                    "artist_names": [a["name"] for a in track.get("artists", [])],
+                    "added_at": item.get("added_at", ""),
+                })
+            if not batch.get("next"):
+                break
+            offset += page_size
+        return results
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning(
+            "fetch_saved_tracks unavailable (%s) — returning empty", exc
+        )
+        return []
+
+
+def fetch_followed_artists(limit_total: int = 200) -> list[str]:
+    """Fetch the artist names the user follows (user-follow-read scope).
+
+    Cursor-paginated (after cursor). Capped at *limit_total*.
+    Degrades gracefully on 401/403: returns [].
+    Returns a list of artist name strings.
+    """
+    try:
+        sp = get_client()
+        results: list[str] = []
+        page_size = 50
+        after: str | None = None
+        while len(results) < limit_total:
+            kwargs: dict = {"limit": page_size, "type": "artist"}
+            if after:
+                kwargs["after"] = after
+            batch = sp.current_user_followed_artists(**kwargs)
+            if not batch:
+                break
+            artists_page = batch.get("artists", {})
+            items = artists_page.get("items", [])
+            if not items:
+                break
+            for artist in items:
+                if len(results) >= limit_total:
+                    break
+                results.append(artist["name"])
+            cursor = artists_page.get("cursors", {})
+            after = cursor.get("after")
+            if not after:
+                break
+        return results
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning(
+            "fetch_followed_artists unavailable (%s) — returning empty", exc
+        )
+        return []
+
+
 def fetch_recent_plays() -> list[dict]:
-    """Return playlists the user recently listened from (via play context)."""
     sp = get_client()
     results = sp.current_user_recently_played(limit=50)
     if not results:

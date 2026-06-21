@@ -60,6 +60,8 @@ class Settings(BaseSettings):
             "user-read-playback-state",
             "user-read-email",
             "user-read-private",
+            "user-library-read",
+            "user-follow-read",
         ])
 
 
