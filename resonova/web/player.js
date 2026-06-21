@@ -944,9 +944,12 @@ class ResonovaPlayer {
 
     // Each track's commentary arrives as it finishes — append to live queue
     es.addEventListener('track_ready', (e) => {
-      const { commentary_url, track_uri, total } = JSON.parse(e.data);
+      const { commentary_url, track_uri, total, track_name, artist, duration_ms } = JSON.parse(e.data);
       const commentaryItem = { type: 'audio', url: commentary_url };
       const spotifyItem = { type: 'spotify', uri: track_uri };
+      if (track_name) spotifyItem.name = track_name;
+      if (artist) spotifyItem.artist = artist;
+      if (duration_ms) spotifyItem.duration_ms = duration_ms;
       this.queue.push(commentaryItem);
       this.queue.push(spotifyItem);
       this.playbackTimeline.push(commentaryItem);
@@ -1067,9 +1070,15 @@ class ResonovaPlayer {
 
     // Look ahead to find what Spotify track comes next (for context)
     const nextSpotify = this.queue.find(q => q.type === 'spotify');
+    const cachedNext = nextSpotify?.uri ? this._cacheGet(nextSpotify.uri) : null;
+    if (cachedNext && nextSpotify) {
+      nextSpotify.name = nextSpotify.name || cachedNext.name;
+      nextSpotify.artist = nextSpotify.artist || cachedNext.artist;
+      nextSpotify.duration_ms = nextSpotify.duration_ms || cachedNext.duration_ms;
+    }
     if (nextSpotify?.name) {
       document.getElementById('next-up').innerHTML =
-        `Up next: <strong>${nextSpotify.name}</strong>`;
+        `Up next: <strong>${this._esc(nextSpotify.name)}</strong>`;
     } else {
       document.getElementById('next-up').textContent = '';
     }

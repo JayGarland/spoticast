@@ -388,6 +388,7 @@ async def _run_generation(job: Job):
 
         ep_dir = episodes_store.episode_audio_dir(episode_id)
         saved_queue: list[dict] = []
+        tracks_by_uri = {t.uri: t for t in tracks}
 
         # --- Synthesize intro, then start streaming immediately ---
         intro_file = f"{ep_dir}/intro.mp3"
@@ -412,15 +413,32 @@ async def _run_generation(job: Job):
                 None, audio_api.assemble_commentary, pcm, commentary_file
             )
 
-            saved_queue.append({"type": "audio", "url": f"/audio/{commentary_file}"})
-            saved_queue.append({"type": "spotify", "uri": track_script["track_uri"]})
+            track_uri = track_script["track_uri"]
+            track_meta = tracks_by_uri.get(track_uri)
+            spotify_item = {"type": "spotify", "uri": track_uri}
+            if track_meta:
+                spotify_item.update({
+                    "name": track_meta.name,
+                    "artist": track_meta.artist,
+                    "duration_ms": track_meta.duration_ms,
+                })
 
-            job.push("track_ready", {
+            saved_queue.append({"type": "audio", "url": f"/audio/{commentary_file}"})
+            saved_queue.append(spotify_item)
+
+            track_ready_payload = {
                 "index": i,
                 "total": total_tracks,
                 "commentary_url": f"/audio/{commentary_file}",
-                "track_uri": track_script["track_uri"],
-            })
+                "track_uri": track_uri,
+            }
+            if track_meta:
+                track_ready_payload.update({
+                    "track_name": track_meta.name,
+                    "artist": track_meta.artist,
+                    "duration_ms": track_meta.duration_ms,
+                })
+            job.push("track_ready", track_ready_payload)
 
         # --- Synthesize outro ---
         if script.get("outro"):

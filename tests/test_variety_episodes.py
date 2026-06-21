@@ -49,6 +49,7 @@ def _run_tests() -> None:
         _test_episodes_backward_compat(episodes)
         _test_run_number(episodes)
         _test_episode_path_traversal_rejected(episodes)
+        _test_server_track_ready_metadata_shape()
 
     print("All tests passed ✓")
 
@@ -264,6 +265,20 @@ def _test_episode_path_traversal_rejected(episodes):
             raise AssertionError(f"Expected ValueError for delete_episode({bad_id!r})")
 
     print("  episode_path_traversal_rejected ✓")
+
+
+def _test_server_track_ready_metadata_shape():
+    """Generation should attach track metadata before the Spotify segment starts."""
+    import inspect
+    import resonova.server as server_mod
+
+    src = inspect.getsource(server_mod._run_generation)
+    assert "tracks_by_uri" in src, "server should map selected track metadata by URI"
+    assert '"track_name": track_meta.name' in src, "track_ready should include display title"
+    assert '"artist": track_meta.artist' in src, "track_ready should include display artist"
+    assert '"duration_ms": track_meta.duration_ms' in src, "track_ready should include duration"
+    assert "saved_queue.append(spotify_item)" in src, "saved episodes should persist Spotify metadata"
+    print("  server_track_ready_metadata_shape ✓")
 
 
 if __name__ == "__main__":
