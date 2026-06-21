@@ -2041,3 +2041,21 @@ body::after {
   text-transform: uppercase;
   margin-bottom: 0.5rem;
 }
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+
+  .landing-waveform-bar,
+  .waveform-bar,
+  .on-air-dot,
+  .progress-step.active .step-icon,
+  .fade-in {
+    animation: none !important;
+  }
+}

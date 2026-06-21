@@ -1,6 +1,6 @@
 # Resonova
 
-Resonova is a personal AI radio companion that grows with your listening history. The current MVP turns Spotify playlists or pasted track lists into hosted cast sessions: two AI hosts deliver DJ intros and per-track commentary, interleaved with the actual music in the browser.
+Resonova is a personal AI radio companion that grows with your listening history. The current MVP turns Spotify playlists or pasted track lists into hosted cast sessions: two AI hosts deliver DJ intros and per-track commentary, interleaved with the actual music in the browser. The product direction is that Resonova should understand the listener better the more they use it.
 
 ## Lineage
 
@@ -24,20 +24,23 @@ Audio is streamed to the player as soon as the intro is synthesized — you don'
 
 ## Product direction
 
-The inherited Spoticast flow is one-shot: one playlist becomes one generated cast episode. Resonova keeps that working base, then expands it into a growing personal cast system:
+The inherited Spoticast flow is one-shot: one playlist becomes one generated cast episode. Resonova keeps that working base and is planned to expand into a growing personal cast system:
 
 - Long-term taste profile and listening history
+- Spotify-authorized listening trails such as recent plays, top tracks/artists, playlists, and playback context
 - Refreshable sessions based on recent listening, playlists, and library context
 - Feedback loops so the AI host learns preferred tone, analysis depth, and framing
 - Customizable lenses such as mood, era, trip memory, genre, or host style
 - Future source expansion beyond Spotify
 
+Current developer setup still requires local environment configuration and API keys. The v0.1 release direction is direct Spotify-connected use without asking normal users to run a server or manage API keys.
+
 ## Prerequisites
 
 - **Spotify Premium** — required for the Web Playback SDK (in-browser playback)
-- **ffmpeg** — required by pydub: `brew install ffmpeg`
+- **ffmpeg** — required by pydub. macOS: `brew install ffmpeg`. Windows: install ffmpeg with `winget install Gyan.FFmpeg` or from ffmpeg.org, then ensure it is on `PATH`.
 - **Python 3.13+**
-- **`uv`** — `brew install uv`
+- **`uv`** — macOS: `brew install uv`. Windows: install from Astral's uv installer or use `winget install astral-sh.uv` if available.
 
 ## Setup
 

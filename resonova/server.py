@@ -493,12 +493,14 @@ async def _run_generation(job: Job):
         # --- Synthesize outro ---
         if script.get("outro"):
             job.push("progress", {"step": "tts", "message": "Synthesizing outro..."})
+            outro_file = f"{ep_dir}/outro.mp3"
+            outro_url = f"/audio/{outro_file}"
             outro_pcm = await tts_api.synthesize_dialogue(script["outro"])
             await loop.run_in_executor(
-                None, audio_api.assemble_commentary, outro_pcm, "outro.mp3"
+                None, audio_api.assemble_commentary, outro_pcm, outro_file
             )
-            saved_queue.append({"type": "audio", "url": "/audio/outro.mp3"})
-            job.push("outro_ready", {"url": "/audio/outro.mp3"})
+            saved_queue.append({"type": "audio", "url": outro_url})
+            job.push("outro_ready", {"url": outro_url})
 
         # Persist episode for future playback
         episodes_store.save_episode(
