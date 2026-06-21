@@ -69,6 +69,7 @@ class ResonovaPlayer {
     this._episodesNeedRefresh = false;
     this._lastConnectedRefresh = 0; // timestamp of last _loadEpisodes call from _showState
     this._metaPrefetch = new Set(); // in-flight Spotify metadata prefetch guard (keyed by URI)
+    this._missingTailRecoveryPromise = null;
 
     // ── Observability ring buffer (max 50 entries) ─────────────────────────
     this._obsTimeline = [];
@@ -446,7 +447,8 @@ class ResonovaPlayer {
   }
 
   _saveResumeState() {
-    if (!this._episodeId || (!this.queue.length && !this.currentItem)) {
+    const hasIncompleteProgress = this.totalItems > 0 && this.completedItems < this.totalItems;
+    if (!this._episodeId || (!this.queue.length && !this.currentItem && !hasIncompleteProgress)) {
       // Nothing meaningful to resume
       localStorage.removeItem('resonova:resume');
       return;
@@ -510,10 +512,13 @@ class ResonovaPlayer {
             <button id="resume-dismiss" style="padding:0.35rem 0.5rem;background:transparent;border:1px solid var(--panel-border);border-radius:3px;color:var(--cream-faint);font-size:0.65rem;cursor:pointer;">✕</button>
         </div>`;
 
-    // Insert after the header text, before the generate form
-    const header = container.querySelector('.connected-header');
-    if (header) {
-      header.after(card);
+    // Keep unfinished playback in the episode/library area so it appears
+    // beside saved casts instead of as a separate page-level alert.
+    const episodesSection = document.getElementById('section-episodes');
+    const episodeList = document.getElementById('past-episodes');
+    if (episodesSection && episodeList) {
+      episodesSection.classList.add('loaded');
+      episodesSection.insertBefore(card, episodeList);
     } else {
       container.insertBefore(card, container.firstChild);
     }
@@ -539,10 +544,38 @@ class ResonovaPlayer {
         ...(state.currentItem ? [state.currentItem] : []),
         ...state.queue,
       ];
-    const startIndex = Math.max(0, state.currentIndex ?? (state.playedItems?.length || 0));
-    const queue = timeline.slice(startIndex);
+    const startIndex = Math.max(0, state.currentItem
+      ? (state.currentIndex ?? (state.playedItems?.length || 0))
+      : (state.completedItems ?? state.currentIndex ?? (state.playedItems?.length || 0)));
+    let resolvedTimeline = timeline;
+    let queue = timeline.slice(startIndex);
 
-    this._startPlayback(queue, { timeline });
+    if (!queue.length && state.completedItems < state.totalItems) {
+      const saved = await this._loadSavedEpisode(state.episodeId);
+      if (saved?.queue?.length > state.completedItems) {
+        resolvedTimeline = saved.queue;
+        queue = saved.queue.slice(state.completedItems);
+      }
+    }
+
+    if (!queue.length && state.completedItems < state.totalItems) {
+      this._showState('playing');
+      this.completedItems = state.completedItems;
+      this.totalItems = state.totalItems;
+      this.playedItems = Array.isArray(state.playedItems) ? [...state.playedItems] : [];
+      this.playbackTimeline = resolvedTimeline;
+      this.currentIndex = Math.max(0, state.completedItems - 1);
+      this.currentItem = null;
+      this.queue = [];
+      this._setNowPlaying('Episode paused', 'Saved cast is still being finalized.');
+      document.getElementById('next-up').textContent = 'Return to Library or try Resume again shortly.';
+      this._updateProgress();
+      this._updateSkipButton();
+      this._saveResumeState();
+      return;
+    }
+
+    this._startPlayback(queue, { timeline: resolvedTimeline });
     this.playedItems = Array.isArray(state.playedItems) ? [...state.playedItems] : [];
 
     // Mark completedItems as already passed (minus current item)
@@ -552,6 +585,64 @@ class ResonovaPlayer {
     this._updateProgress();
     this._updateSkipButton();
     this._saveResumeState();
+  }
+
+  async _loadSavedEpisode(episodeId) {
+    if (!episodeId) return null;
+    try {
+      const ep = await this._apiFetch(`/api/episodes/${episodeId}`);
+      try {
+        localStorage.setItem(`resonova:episode:${episodeId}`, JSON.stringify({ ts: Date.now(), ep }));
+      } catch { /* quota exceeded */ }
+      return ep;
+    } catch {
+      try {
+        const raw = localStorage.getItem(`resonova:episode:${episodeId}`);
+        return raw ? JSON.parse(raw).ep || null : null;
+      } catch {
+        return null;
+      }
+    }
+  }
+
+  async _recoverMissingEpisodeTail() {
+    if (this._missingTailRecoveryPromise) return this._missingTailRecoveryPromise;
+    this._missingTailRecoveryPromise = (async () => {
+      this._obsRecord('queue:missing-tail', `${this.completedItems}/${this.totalItems}`);
+      const ep = await this._loadSavedEpisode(this._episodeId);
+      if (!ep?.queue?.length || ep.queue.length <= this.completedItems) return false;
+
+      this.playbackTimeline = ep.queue;
+      this.queue = ep.queue.slice(this.completedItems);
+      this.totalItems = Math.max(this.totalItems, ep.queue.length);
+      this.currentIndex = Math.max(0, this.completedItems - 1);
+      this.currentItem = null;
+      this._setNowPlaying('Continuing episode', 'Recovered remaining saved segments.');
+      this._updateProgress();
+      this._updateSkipButton();
+      this._saveResumeState();
+      return this.queue.length > 0;
+    })();
+
+    try {
+      return await this._missingTailRecoveryPromise;
+    } finally {
+      this._missingTailRecoveryPromise = null;
+    }
+  }
+
+  _parkIncompleteEpisode() {
+    this._obsRecord('queue:incomplete-parked', `${this.completedItems}/${this.totalItems}`);
+    this._setNowPlaying('Episode interrupted', 'Resume is available in Library.');
+    this._setSegmentType('');
+    document.getElementById('next-up').textContent = 'Return to Library to resume this cast.';
+    document.getElementById('on-air-badge').classList.remove('active');
+    document.getElementById('waveform').classList.add('paused');
+    this._isPaused = true;
+    this._updatePlayPauseButton();
+    this._saveResumeState();
+    const state = this._checkResumeState();
+    if (state) this._showResumePrompt(state);
   }
 
   async _reconcileAfterBackground() {
@@ -1032,6 +1123,16 @@ class ResonovaPlayer {
         setTimeout(() => this._playNext(), 300);
         return;
       }
+      if (this.totalItems > 0 && this.completedItems < this.totalItems) {
+        this._recoverMissingEpisodeTail().then((recovered) => {
+          if (recovered) {
+            this._playNext();
+          } else {
+            this._parkIncompleteEpisode();
+          }
+        });
+        return;
+      }
       this._onPlaybackComplete();
       return;
     }
@@ -1469,6 +1570,10 @@ class ResonovaPlayer {
   }
 
   _onPlaybackComplete() {
+    if (this.totalItems > 0 && this.completedItems < this.totalItems) {
+      this._parkIncompleteEpisode();
+      return;
+    }
     if (this._segmentDeadline) {
       clearTimeout(this._segmentDeadline);
       this._segmentDeadline = null;
