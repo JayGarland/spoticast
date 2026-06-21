@@ -70,6 +70,9 @@ class ResonovaPlayer {
     this._lastConnectedRefresh = 0; // timestamp of last _loadEpisodes call from _showState
     this._metaPrefetch = new Set(); // in-flight Spotify metadata prefetch guard (keyed by URI)
     this._missingTailRecoveryPromise = null;
+    this._activeGenerationId = null;
+    this._activeGenerationName = '';
+    this._activeGenerationSource = '';
 
     // ── Observability ring buffer (max 50 entries) ─────────────────────────
     this._obsTimeline = [];
@@ -1010,6 +1013,11 @@ class ResonovaPlayer {
       });
       jobId = res.job_id;
       this._episodeId = jobId;
+      this._activeGenerationId = jobId;
+      this._activeGenerationName = 'Generating cast';
+      this._activeGenerationSource = parsed.playlist_uri ? 'New playlist' : 'Custom tracks';
+      this._pendingEpisodeFocusId = jobId;
+      this._episodesNeedRefresh = true;
     } catch (err) {
       this._showState('connected');
       this._showError('Failed to start generation: ' + err.message);
@@ -1031,7 +1039,8 @@ class ResonovaPlayer {
 
     // Intro is ready — start playback immediately with just the intro audio
     es.addEventListener('intro_ready', (e) => {
-      const { url } = JSON.parse(e.data);
+      const { url, episode_name } = JSON.parse(e.data);
+      if (episode_name) this._activeGenerationName = episode_name;
       this._markAllStepsDone();
       this._startPlayback([{ type: 'audio', url }]);
     });
@@ -1053,6 +1062,7 @@ class ResonovaPlayer {
       this._updateProgress();
       this._updateSkipButton();
       this._saveResumeState();
+      this._refreshCurrentGenerationInLibrary();
     });
 
     // Outro arrives after the last track — append to the live queue
@@ -1065,6 +1075,7 @@ class ResonovaPlayer {
       this._updateProgress();
       this._updateSkipButton();
       this._saveResumeState();
+      this._refreshCurrentGenerationInLibrary();
     });
 
     es.addEventListener('done', (e) => {
@@ -1623,6 +1634,12 @@ class ResonovaPlayer {
     }
   }
 
+  _refreshCurrentGenerationInLibrary() {
+    if (!this._activeGenerationId) return;
+    if (!document.getElementById('state-connected')?.classList.contains('active')) return;
+    this._loadEpisodes({ focusEpisodeId: this._activeGenerationId });
+  }
+
   async _loadEpisodes(options = {}) {
     const focusEpisodeId = options.focusEpisodeId || null;
     let episodes = null;
@@ -1649,7 +1666,9 @@ class ResonovaPlayer {
     const container = document.getElementById('past-episodes');
     if (!container) return false;
 
-    if (!episodes || !episodes.length) {
+    const activeGeneration = this._currentGenerationEpisode();
+
+    if ((!episodes || !episodes.length) && !activeGeneration) {
       container.innerHTML = '';
       document.getElementById('section-episodes').classList.remove('loaded');
       return !fromCache;
@@ -1679,10 +1698,20 @@ class ResonovaPlayer {
       (a, b) => b.latestDate.localeCompare(a.latestDate)
     );
 
+    const activeGenerationSaved = !!(activeGeneration && episodes.some(ep => ep.id === activeGeneration.id));
+    if (activeGenerationSaved) {
+      this._activeGenerationId = null;
+      this._activeGenerationName = '';
+      this._activeGenerationSource = '';
+    }
+
     const focusGroupKey = focusEpisodeId
       ? sortedGroups.find(g => g.episodes.some(ep => ep.id === focusEpisodeId))?.key
       : null;
-    container.innerHTML = sortedGroups.map((g, i) => {
+    const currentHtml = activeGeneration && !activeGenerationSaved
+      ? this._currentGenerationGroupHTML(activeGeneration)
+      : '';
+    container.innerHTML = currentHtml + sortedGroups.map((g, i) => {
       const expanded = focusGroupKey ? g.key === focusGroupKey : i === 0;
       return this._episodeGroupHTML(g, expanded, focusEpisodeId);
     }).join('');
@@ -1724,6 +1753,46 @@ class ResonovaPlayer {
         <div class="ep-group-body">
           <div class="ep-group-cards">
             ${group.episodes.map(ep => this._episodeCardHTML(ep, ep.id === focusEpisodeId)).join('')}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  _currentGenerationEpisode() {
+    if (!this._activeGenerationId) return null;
+    return {
+      id: this._activeGenerationId,
+      name: this._activeGenerationName || 'Generating cast',
+      source: this._activeGenerationSource || 'Current source',
+      completedItems: this.completedItems,
+      totalItems: this.totalItems,
+      status: this._generationComplete ? 'Saving' : 'Generating',
+    };
+  }
+
+  _currentGenerationGroupHTML(ep) {
+    const progress = ep.totalItems > 0
+      ? `Segment ${ep.completedItems}/${ep.totalItems}`
+      : 'Starting';
+    return `
+      <div class="ep-group expanded" data-current-generation-id="${this._esc(ep.id)}">
+        <div class="ep-group-header">
+          <span class="ep-group-chevron" aria-hidden="true">▾</span>
+          <span class="ep-group-name">Current Cast</span>
+          <span class="ep-group-meta">${this._esc(ep.status)} · ${this._esc(progress)}</span>
+        </div>
+        <div class="ep-group-body">
+          <div class="ep-group-cards">
+            <div class="episode-card episode-card-new" data-current-generation-card>
+              <div class="episode-card-main">
+                <div class="episode-card-name">${this._esc(ep.name)}</div>
+                <div class="episode-card-meta">
+                  ${this._esc(ep.source)} · ${this._esc(progress)}
+                  <span class="ep-new-badge">${this._esc(ep.status)}</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -2357,7 +2426,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Clicking anywhere else on an episode card plays it (but not inside action area)
     const episodeCard = e.target.closest('.episode-card');
-    if (episodeCard && !e.target.closest('.episode-card-actions')) {
+    if (episodeCard && episodeCard.dataset.episodeId && !e.target.closest('.episode-card-actions')) {
       resonova._playEpisode(episodeCard.dataset.episodeId);
       return;
     }
