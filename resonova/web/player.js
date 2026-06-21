@@ -193,7 +193,7 @@ class ResonovaPlayer {
         }
 
         if (!deviceId) throw new Error('Spotify device did not become ready');
-        const connectReady = await this._waitForSpotifyConnectDevice(token, deviceId, 5000);
+        const connectReady = await this._waitForSpotifyConnectDevice(token, deviceId, 12000);
         if (!connectReady) throw new Error('Spotify device is ready in SDK but not visible to Spotify Connect');
 
         await this._transferPlayback(deviceId, token);
@@ -1082,6 +1082,18 @@ class ResonovaPlayer {
     this._setSegmentType('spotify');
     this._setNowPlaying(item.name || 'Spotify music', item.artist || 'Connecting to Spotify...');
     document.getElementById('next-up').textContent = '';
+
+    if (document.visibilityState !== 'visible') {
+      this._obsRecord('play:spotify:deferred-hidden', item.uri.slice(-24));
+      this._spotifyUnhealthy = true;
+      this._spotifyRecoveryFailed = true;
+      this._lifecycle.playbackError = 'Spotify deferred while page hidden';
+      this._setNowPlaying('Spotify waiting for phone unlock', 'Return to resume or use Skip Music');
+      this._updateRecoveryControl();
+      this._updateSkipMusicButton();
+      this._saveResumeState();
+      return;
+    }
 
     document.getElementById('waveform').classList.add('spotify-mode');
     document.getElementById('waveform').classList.remove('paused');
