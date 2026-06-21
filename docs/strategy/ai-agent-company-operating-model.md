@@ -244,6 +244,20 @@ Restrictions:
 
 This is intentionally similar to an Azure DevOps-style authority model: implementation agents can contribute work, but approval power stays with boss and chef.
 
+## Parallel Agent Branch And PR Policy
+
+Single scoped work can be committed directly by chef after validation when it stays inside an approved task.
+
+When multiple agents or workstreams operate at the same time:
+
+- Use a separate branch or isolated worktree for each agent/workstream where possible.
+- Prefer PR or PR-like review packets for parallel implementation work before merge.
+- Managers, workers, auditors, reviewers, recruiters, and specialists must not approve or merge their own work.
+- Chef gates each branch or PR by inspecting the agent response, handoff, git status, git diff, and validation evidence.
+- Boss review is required before merging non-trivial product, architecture, budget, release, PR, or pipeline changes.
+- If two agents touch overlapping files or behavior, chef should sequence the work and resolve the conflict before merge.
+- If a branch/worktree is not practical, the agent brief must state why and define stricter file boundaries and handoff requirements.
+
 ## Manager Selection Principle
 
 Chef chooses who handles the work, not based on platform loyalty, but based on role fit and recent performance.
