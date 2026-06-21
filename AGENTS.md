@@ -22,7 +22,7 @@ When reviewing agent performance, also read:
 - Manager-level work currently requires a work handoff.
 - Handoffs should explain what changed, what was validated, remaining risks, and what the next agent needs to know.
 - Avoid over-documenting. Prefer short decision records, job specs, briefs, and handoffs over large process manuals.
-- Commit only validated scoped work when authorized.
+- Chef has standing authorization to commit validated scoped work inside an approved task; non-trivial product, architecture, budget, release, PR, or pipeline changes require chef-boss discussion first.
 
 ## Default Behavior
 

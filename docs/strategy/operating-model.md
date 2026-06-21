@@ -7,6 +7,8 @@ owner: "Project owner"
 
 # Resonova Operating Model
 
+> Historical draft. This document records the original operating model from 2026-06-19. For current company-role, chef, manager, auditor, recruiter, and approval rules, use `docs/strategy/ai-agent-company-operating-model.md` and `docs/strategy/ai-agent-role-job-specs.md`. This file should be treated as background context unless a newer strategy doc explicitly references it.
+
 ## Purpose
 
 Define how the Resonova project should be operated while it is still a small, founder-led startup-style effort using multiple AI manager teams.

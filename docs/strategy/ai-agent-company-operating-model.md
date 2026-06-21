@@ -4,7 +4,7 @@ Audience: Internal
 
 ## Purpose
 
-This document records the current company-level operating model for Resonova's AI-agent workforce. It is a descriptive report for boss review, not a final policy.
+This document records the current company-level operating model for Resonova's AI-agent workforce. It is the current living operating policy for agent work, and it should be updated as the boss changes staffing, authority, or workflow decisions.
 
 The company does not treat a specific platform or model as the permanent holder of a role. A role is fixed by job responsibility; the AI agent assigned to that role can change over time.
 
@@ -112,12 +112,13 @@ Boundary:
 
 ### Internal Auditor / Quality Team
 
-Status: needed, not fully staffed.
+Status: trialed; use carefully as inspect-only quality reviewer.
 
 Current staffing:
 
-- The company is still recruiting for this role.
-- No specific internal auditor agent has been hired yet.
+- One internal auditor / product reviewer has completed a trial and is approved for inspect-only use under chef gate.
+- The role is not yet fully staffed or autonomous.
+- Reference: `docs/handoffs/Internal Auditor Product Reviewer Trial Chef Gate.md`.
 
 Potential responsibilities:
 
@@ -131,13 +132,13 @@ Potential responsibilities:
 
 ### Product Reviewer / Quality Team
 
-Status: needed, not fully staffed.
+Status: trialed; use carefully as inspect-only product reviewer.
 
 Current staffing:
 
-- The company is still recruiting for this role.
-- No specific product-review agent has been hired yet.
-- One quality-team agent may temporarily hold both internal-auditor and product-review responsibilities.
+- The current trialed quality-team agent may temporarily hold both internal-auditor and product-review responsibilities.
+- The role is not yet fully staffed or autonomous.
+- Reference: `docs/handoffs/Internal Auditor Product Reviewer Trial Chef Gate.md`.
 
 Potential responsibilities:
 
@@ -216,8 +217,9 @@ Allowed authority:
 Restrictions:
 
 - Manager agents, worker agents, auditors, and reviewers do not self-approve product changes.
+- Chef has standing authorization to create routine commits for validated, scoped work inside an approved task.
 - Non-trivial commits, PRs, pipeline changes, release decisions, or other decisional actions require chef-boss discussion first.
-- Chef can perform routine commits for validated, scoped work, but should escalate when the work changes product direction, architecture, budget, deployment, or release risk.
+- Chef should escalate when the work changes product direction, architecture, budget, deployment, or release risk.
 
 This is intentionally similar to an Azure DevOps-style authority model: implementation agents can contribute work, but approval power stays with boss and chef.
 
