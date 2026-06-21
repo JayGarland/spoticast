@@ -405,7 +405,7 @@ async def api_feedback(req: FeedbackRequest):
     return JSONResponse({"ok": True, "id": event["id"]})
 
 
-
+class GenerateRequest(BaseModel):
     playlist_uri: str | None = None
     track_uris: list[str] | None = None
 

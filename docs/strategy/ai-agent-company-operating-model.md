@@ -280,6 +280,11 @@ Selection factors:
 - Tool fit: CLI availability, file access, browser access, model capability.
 - Cost: API credits, subscription limits, time, manual coordination burden.
 
+Current boss preference, 2026-06-22:
+
+- For severe implementation regressions delegated to an external manager, use `deepseek-v4-pro` when that manager runtime supports explicit model selection.
+- If the active runtime does not expose `deepseek-v4-pro`, chef should say so clearly and proceed with the best available manager path rather than blocking an urgent fix.
+
 ## Performance Review Meeting
 
 The company should periodically review agents, but not too often. The purpose is to update usage weights and management rules.

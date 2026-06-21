@@ -53,6 +53,7 @@ def _run_tests() -> None:
         _test_quota_error_classification()
         _test_retry_after_formatting()
         _test_failed_episode_save(episodes)
+        _test_generate_route_accepts_json_body()
         _test_cooldown_guard_in_server()
 
     print("All tests passed ✓")
@@ -428,6 +429,39 @@ def _test_cooldown_guard_in_server():
     assert "_get_tts_cooldown" in src_gen, "generate route must check cooldown"
 
     print("  cooldown_guard_in_server ✓")
+
+
+def _test_generate_route_accepts_json_body():
+    """FastAPI must parse /generate payload as JSON body, not query parameter req."""
+    from fastapi.testclient import TestClient
+    import resonova.server as server_mod
+
+    route = next(
+        r for r in server_mod.app.routes
+        if getattr(r, "path", None) == "/generate"
+    )
+    body_names = [param.name for param in route.dependant.body_params]
+    query_names = [param.name for param in route.dependant.query_params]
+
+    assert "req" in body_names, "/generate must accept req from JSON body"
+    assert "req" not in query_names, "/generate must not require query parameter req"
+
+    original_get_current_token = server_mod.spotify_api.get_current_token
+    try:
+        server_mod.spotify_api.get_current_token = lambda: None
+        response = TestClient(server_mod.app).post(
+            "/generate",
+            json={"playlist_uri": "spotify:playlist:test001"},
+        )
+        assert response.status_code == 401, (
+            f"Expected JSON body to reach endpoint auth check, got {response.status_code}: "
+            f"{response.text}"
+        )
+        assert "query" not in response.text, "Generate JSON body must not fail as missing query req"
+    finally:
+        server_mod.spotify_api.get_current_token = original_get_current_token
+
+    print("  generate_route_accepts_json_body ✓")
 
 
 if __name__ == "__main__":
