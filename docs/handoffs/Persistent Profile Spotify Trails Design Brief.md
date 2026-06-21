@@ -4,6 +4,8 @@ Date: 2026-06-21
 Owner: Chef
 Status: Ready to route
 
+Boss decision (2026-06-21): data appetite is **data-rich now**. Promote Spotify saved library (`user-library-read`) and followed artists (`user-follow-read`) to day-one scope, with clear connect-time consent copy. Consent, inspectability, and reset controls still apply.
+
 ## Purpose
 
 Design the first real Resonova memory layer.
@@ -46,19 +48,19 @@ Inspect these files before designing:
 - `docs/strategy/release-access-and-memory-positioning-brief.md`
 - `docs/strategy/v0.1-roadmap.md`
 
-Verified current Spotify signals already used or requested:
+Current Spotify scopes the app already requests (source of truth: `resonova/config.py`, `spotify_scopes`). The manager must re-verify against the code, not this list:
 
-- `user-top-read`
-  - top tracks: short, medium, long term
-  - top artists: short, medium, long term
-- `user-read-recently-played`
-  - recent track URIs
-  - recent playlist context where available
+- `user-read-recently-played` - recent track URIs, recent playlist context where available
+- `user-top-read` - top tracks/artists across short, medium, long term
 - `playlist-read-private`
 - `playlist-read-collaborative`
+- `streaming` - Web Playback SDK playback
+- `user-modify-playback-state` - playback control (a write/control scope already shipped)
 - `user-read-playback-state`
-- `user-read-private`
 - `user-read-email`
+- `user-read-private`
+
+Note: an earlier draft of this brief labeled an incomplete list "Verified" and omitted `streaming` and `user-modify-playback-state`. The app already ships one write/control scope, so the privacy framing below ("write scopes parked") refers to *library/playlist-modifying* write scopes, not playback control.
 
 Verified current product memory/storage pieces:
 
@@ -71,16 +73,19 @@ Verified current product memory/storage pieces:
 
 Evaluate more personal-data APIs, but do not assume all should be added.
 
-Priority candidates:
+Day-one scope (boss-approved 2026-06-21, data-rich):
 
 - Spotify saved tracks / library signal
-  - Likely scope to evaluate: `user-library-read`
+  - Scope: `user-library-read`
   - Product value: durable "what the user keeps" taste signal, stronger than one playlist.
+- Spotify followed artists
+  - Scope: `user-follow-read`
+  - Product value: explicit artist affinity beyond recent behavior.
+
+Still evaluate (recommend only with product reason + consent copy):
+
 - Spotify saved albums / saved shows, if relevant to music commentary
   - Product value: album-oriented taste, long-form listening, podcast/show context if Resonova later supports it.
-- Spotify followed artists
-  - Likely scope to evaluate: `user-follow-read`
-  - Product value: explicit artist affinity beyond recent behavior.
 - Spotify current playback / queue / playback state
   - Product value: session context, current listening mode, device state, possible "what were you just doing?" continuity.
 - Existing saved-cast and replay history
@@ -219,7 +224,7 @@ This is a design/handoff task only. Do not implement code.
 
 Resonova's product baseline is that the companion should understand the listener better the more they use it. For v0.1, the target entry path is browser-based direct use: open Resonova, connect Spotify Premium, authorize, generate/listen.
 
-Inspect the current repo and verify:
+Re-verify scopes directly from resonova/config.py (do not trust any inline list). Inspect the current repo and verify:
 - existing Spotify scopes and API calls
 - existing Last.fm enrichment
 - saved cast storage
@@ -227,7 +232,7 @@ Inspect the current repo and verify:
 - generation prompt context
 - frontend surfaces where memory/feedback controls could live
 
-Evaluate additional personal-data APIs, especially Spotify saved library and followed artists, but recommend only scopes/endpoints that have a clear product reason and acceptable consent burden.
+Day-one data appetite (boss-approved, data-rich): add user-library-read (saved tracks) and user-follow-read (followed artists) to the design, with clear connect-time consent copy for each. Any scope beyond those still needs a product reason and acceptable consent burden.
 
 Produce docs/handoffs/Persistent Profile Spotify Trails Design Handoff.md with:
 - current architecture facts
