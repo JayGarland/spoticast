@@ -16,11 +16,14 @@ the memory layer is not data collection — it is a companion that grows with th
   quiet end"), never the user's own artist-name *inventory* (descriptor-not-inventory, per the
   privacy audit) and never cross-cast history. Requires a style-derivation source first (see §4 and
   the style-source note). Locked after both quality passes (product review + privacy audit).
-  **CHECKPOINT (2026-06-22):** before the prompt change that actually makes the hosts acknowledge the
-  listener, the boss elevated this to a product-soul checkpoint and is reconfirming it with a web-UI
-  agent — see `docs/handoffs/Host Awareness Decision Discussion Handoff.md`. Do NOT change the host
-  guardrail/prompt until that confirmation returns. Open meta-question: a single default stance vs
-  user-selectable cast modes (A=Radio / B,C=Companion).
+  **CHECKPOINT RESOLVED (2026-06-22):** Option B confirmed from four angles — the boss's lean, both
+  quality passes, the deep-research report (`docs/deep-research-report.md`), and a customer's
+  jump-scare concern (hosts "turning to" the listener feels scary — that's stance C, which B avoids).
+  Implemented in `gemini.py` with a **fourth-wall-preserving** guardrail: a rare, light, third-person,
+  playlist-grounded taste nod framed as the hosts' own observation about the music — NEVER "you",
+  inventory, history, playlist-contradiction, or turning to the listener. C is rejected; A/B/C as
+  user-selectable modes parked (not built). Pending: boss listens to a real cast to confirm it feels
+  right.
 - **Per-user isolation: enforce single-user now.** Lock the instance to the owner's Spotify
   identity — do not auto-populate/merge a second connecting account. This addresses the audit's
   Critical cross-user bleed before any second tester connects. Full per-user isolation (profile/

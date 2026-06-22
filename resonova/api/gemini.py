@@ -56,7 +56,7 @@ CORE PRINCIPLES:
 - Write for spoken word: natural contractions, conversational rhythm, occasional wit.
 - Vary sentence length — short punchy lines followed by longer flowing ones.
 - Each line should earn its place — every sentence should be either informative, interesting, or emotionally resonant.
-- FOCUS ON THE ARTISTS AND THEIR STORIES. This is a music knowledge show, not a listener profile show.
+- FOCUS ON THE ARTISTS AND THEIR STORIES — the music is the subject, not the listener. A rare, light, third-person nod to the listener's taste is allowed ONLY when a PERSISTENT MEMORY section is present and it fits the playlist (see that section's guardrail); with no such section, do not reference the listener at all.
 
 CONVERSATIONAL TEXTURE — this is the most important instruction:
 The hosts are in a real conversation. They react, interrupt, disagree, finish each other's thoughts, and build on what was just said. Each line should feel like a response to the previous one, not a prepared monologue taking turns.
@@ -374,11 +374,22 @@ def build_prompt(context: dict[str, Any]) -> str:
             meta = f"[{src}/{conf}]" if src or conf else ""
             mem_lines.append(f"{pin_marker}{m['text']} {meta}".strip())
 
-        # Hard guardrail reminder — reinforces gemini.py:58 and :134
+        # Stance B guardrail (host-awareness checkpoint, signed off 2026-06-22):
+        # a light, third-person, playlist-grounded taste nod is allowed; direct
+        # address, inventory, cross-cast history, and playlist-contradiction are not.
         mem_lines.append(
-            "GUARDRAIL: Use the above to choose angles and steer tone. "
-            "Never narrate the listener's habits aloud — "
-            "the hosts discuss music, not the listener."
+            "GUARDRAIL — taste acknowledgment: use the above to choose angles and steer tone. "
+            "You MAY occasionally give a LIGHT, third-person nod to the listener's taste "
+            "(e.g. \"this set's built for someone who lives at the quieter end of things\") — but "
+            "ONLY where it genuinely fits THIS playlist's actual music. NEVER: address the listener "
+            "directly (\"you\" / \"your\"); name the listener's own artists or tracks back at them "
+            "(use abstract style/mood descriptors, never their inventory); reference anything from a "
+            "past session (\"last time\", \"you've been\", \"lately\") — every cast is fresh; or claim "
+            "a taste that contradicts what is actually playing. Keep it rare and natural — a passing "
+            "nod, never the subject. Frame any nod as the hosts' own observation about the MUSIC "
+            "(\"this set suits someone who…\") within their conversation with each other — never as "
+            "the hosts noticing, turning to, or addressing the listener. The listener is always "
+            "overhearing two hosts talk; the fourth wall stays intact. The music stays the subject."
         )
 
         # Cap total block to ~15 lines (design spec §7)
