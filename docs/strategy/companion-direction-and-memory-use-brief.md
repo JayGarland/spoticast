@@ -16,6 +16,11 @@ the memory layer is not data collection — it is a companion that grows with th
   quiet end"), never the user's own artist-name *inventory* (descriptor-not-inventory, per the
   privacy audit) and never cross-cast history. Requires a style-derivation source first (see §4 and
   the style-source note). Locked after both quality passes (product review + privacy audit).
+  **CHECKPOINT (2026-06-22):** before the prompt change that actually makes the hosts acknowledge the
+  listener, the boss elevated this to a product-soul checkpoint and is reconfirming it with a web-UI
+  agent — see `docs/handoffs/Host Awareness Decision Discussion Handoff.md`. Do NOT change the host
+  guardrail/prompt until that confirmation returns. Open meta-question: a single default stance vs
+  user-selectable cast modes (A=Radio / B,C=Companion).
 - **Per-user isolation: enforce single-user now.** Lock the instance to the owner's Spotify
   identity — do not auto-populate/merge a second connecting account. This addresses the audit's
   Critical cross-user bleed before any second tester connects. Full per-user isolation (profile/
