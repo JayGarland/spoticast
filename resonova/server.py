@@ -58,6 +58,7 @@ class Job:
         self.playlist_name: str = ""
         self.track_uris: list[str] | None = None
         self.incognito: bool = False
+        self.commentary_language: str | None = None
         self.status: str = "pending"   # pending | running | done | error
         self.events: list[dict] = []
         self.queue: list[dict] | None = None
@@ -426,6 +427,7 @@ class GenerateRequest(BaseModel):
     playlist_uri: str | None = None
     track_uris: list[str] | None = None
     incognito: bool = False
+    commentary_language: str | None = None
 
 
 @app.post("/generate")
@@ -446,6 +448,8 @@ async def generate(req: GenerateRequest):
     job = Job(job_id, source)
     job.track_uris = req.track_uris
     job.incognito = req.incognito
+    if req.commentary_language:
+        job.commentary_language = req.commentary_language.strip()[:40] or None
     _jobs[job_id] = job
 
     # Run generation in background so we can stream progress
@@ -568,6 +572,8 @@ async def _run_generation(job: Job):
 
         # Incognito flag: signals build_prompt to omit all personalization blocks
         context["incognito"] = job.incognito
+        if job.commentary_language:
+            context["commentary_language"] = job.commentary_language
 
         # Attach profile to context for prompt injection (non-blocking; missing = omit block)
         # Omitted entirely for incognito casts (no personalization at all).

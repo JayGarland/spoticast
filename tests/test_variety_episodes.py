@@ -451,7 +451,10 @@ def _test_generate_route_accepts_json_body():
         server_mod.spotify_api.get_current_token = lambda: None
         response = TestClient(server_mod.app).post(
             "/generate",
-            json={"playlist_uri": "spotify:playlist:test001"},
+            json={
+                "playlist_uri": "spotify:playlist:test001",
+                "commentary_language": "Mandarin Chinese",
+            },
         )
         assert response.status_code == 401, (
             f"Expected JSON body to reach endpoint auth check, got {response.status_code}: "

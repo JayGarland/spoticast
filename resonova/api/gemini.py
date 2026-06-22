@@ -214,6 +214,7 @@ def build_prompt(context: dict[str, Any]) -> str:
     lastfm_user: dict = context.get("lastfm_user", {})
     persistent_profile: dict | None = context.get("persistent_profile")
     incognito: bool = context.get("incognito", False)
+    commentary_language: str | None = context.get("commentary_language")
 
     has_lastfm = bool(lastfm_user)
 
@@ -388,11 +389,20 @@ def build_prompt(context: dict[str, Any]) -> str:
             + "\n"
         )
 
+    language_section = ""
+    if commentary_language:
+        language_section = (
+            "\n═══ LANGUAGE REQUIREMENT ═══\n"
+            f"Write all host dialogue in {commentary_language}. "
+            "Keep artist names, song titles, album titles, and quoted proper nouns in their original form when natural.\n"
+        )
+
     return f"""Generate a rich, detailed podcast commentary script for this Spotify playlist.
 
 ═══ LISTENER PROFILE ═══
 {chr(10).join(listener_lines)}
 {persistent_memory_section}
+{language_section}
 ═══ PLAYLIST OVERVIEW ═══
 {summary['total_tracks']} tracks | Avg energy: {summary['avg_energy']} | Avg valence: {summary['avg_valence']} | Avg tempo: {summary['avg_tempo']} BPM
 {summary['personal_favorites_count']} tracks are Spotify top tracks | {summary.get('lastfm_total_plays', 0)} total Last.fm plays across playlist
@@ -421,6 +431,11 @@ async def generate_episode_name(context: dict[str, Any]) -> str:
         for t in context.get("tracks", [])[:15]
     ]
     playlist_name = context.get("playlist_name", "")
+    commentary_language: str | None = context.get("commentary_language")
+    language_requirement = (
+        f"- Write the title in {commentary_language}; keep artist names and proper nouns natural\n"
+        if commentary_language else ""
+    )
 
     prompt = (
         f"Generate a short podcast episode title for a music commentary show.\n"
@@ -431,6 +446,7 @@ async def generate_episode_name(context: dict[str, Any]) -> str:
         "- Evocative and specific — capture the mood, era, geography, or emotional thread\n"
         "- Like a real episode title: 'Berlin Nights', 'Melancholy at Midnight', 'The Britpop Years'\n"
         "- No quotes, no punctuation except hyphens\n"
+        f"{language_requirement}"
         "Output ONLY the title, nothing else."
     )
 

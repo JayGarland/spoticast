@@ -41,6 +41,7 @@ def _run_tests() -> None:
         _test_empty_profile_prompt_unchanged()
         _test_disabled_profile_prompt_unchanged()
         _test_populated_profile_prompt_has_block()
+        _test_commentary_language_prompt()
         # Slice Two tests
         _test_summarize_library_recency_split(profile_mod)
         _test_summarize_library_followed_artists(profile_mod)
@@ -411,6 +412,22 @@ def _test_empty_profile_prompt_unchanged():
         "No profile in context must produce no PERSISTENT MEMORY block"
     )
     print("  empty_profile_prompt_unchanged ✓")
+
+
+def _test_commentary_language_prompt():
+    """commentary_language adds an explicit language requirement to the prompt."""
+    from resonova.api.gemini import build_prompt
+
+    ctx = _make_minimal_context()
+    ctx["commentary_language"] = "Mandarin Chinese"
+
+    prompt = build_prompt(ctx)
+
+    assert "LANGUAGE REQUIREMENT" in prompt
+    assert "Write all host dialogue in Mandarin Chinese" in prompt
+    assert "artist names, song titles, album titles" in prompt
+
+    print("  commentary_language_prompt ✓")
 
 
 def _test_disabled_profile_prompt_unchanged():

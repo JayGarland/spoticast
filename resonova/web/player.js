@@ -1354,6 +1354,16 @@ class ResonovaPlayer {
     const _incognitoEl = document.getElementById('generate-incognito');
     parsed.incognito = !!(_incognitoEl && _incognitoEl.checked);
 
+    const _languageSelect = document.getElementById('commentary-language');
+    const _languageCustom = document.getElementById('commentary-language-custom');
+    const selectedLanguage = (_languageSelect?.value || '').trim();
+    const commentaryLanguage = selectedLanguage === 'custom'
+      ? (_languageCustom?.value || '').trim()
+      : selectedLanguage;
+    if (commentaryLanguage) {
+      parsed.commentary_language = commentaryLanguage.slice(0, 40);
+    }
+
     // Client-side quota cooldown guard — blocks immediate retries without a server round-trip
     try {
       const raw = localStorage.getItem('resonova:tts-cooldown');
@@ -2890,6 +2900,16 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.disabled = false;
     btn.textContent = 'Generate Cast';
   });
+
+  const languageSelect = document.getElementById('commentary-language');
+  const languageCustom = document.getElementById('commentary-language-custom');
+  if (languageSelect && languageCustom) {
+    languageSelect.addEventListener('change', () => {
+      const isCustom = languageSelect.value === 'custom';
+      languageCustom.style.display = isCustom ? '' : 'none';
+      if (isCustom) languageCustom.focus();
+    });
+  }
 
   // Auto-resize textarea and allow pasting multi-line track lists
   const textarea = document.getElementById('playlist-uri');

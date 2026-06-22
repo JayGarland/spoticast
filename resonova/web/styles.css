@@ -578,6 +578,47 @@ body::after {
   background: rgba(108, 99, 255, 0.06);
 }
 
+.generate-options {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.language-select-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  color: var(--cream-mid);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.language-select-label select,
+.language-custom-input {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  color: var(--cream);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0;
+  min-height: 2rem;
+  outline: none;
+  padding: 0.35rem 0.55rem;
+}
+
+.language-select-label select:focus,
+.language-custom-input:focus {
+  border-color: var(--accent-mid);
+}
+
+.language-custom-input {
+  width: min(100%, 12rem);
+}
+
 /* ── Library sections ── */
 .library-section {
   width: 100%;

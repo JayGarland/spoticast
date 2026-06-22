@@ -200,6 +200,32 @@
             required
           ></textarea>
         </div>
+        <div class="generate-options">
+          <label class="language-select-label" for="commentary-language">
+            <span>Commentary language</span>
+            <select id="commentary-language">
+              <option value="">Auto / default</option>
+              <option value="English">English</option>
+              <option value="Mandarin Chinese">Mandarin Chinese</option>
+              <option value="Cantonese">Cantonese</option>
+              <option value="Japanese">Japanese</option>
+              <option value="Korean">Korean</option>
+              <option value="Spanish">Spanish</option>
+              <option value="French">French</option>
+              <option value="German">German</option>
+              <option value="custom">Custom...</option>
+            </select>
+          </label>
+          <input
+            class="language-custom-input"
+            id="commentary-language-custom"
+            type="text"
+            placeholder="Type a language"
+            autocomplete="off"
+            spellcheck="false"
+            style="display:none"
+          />
+        </div>
         <label class="incognito-toggle-label" title="One-off cast: uses no saved memory and records nothing. Your stored memory is left untouched.">
           <input type="checkbox" id="generate-incognito">
           <span>Incognito — don't use or save memory for this cast</span>
