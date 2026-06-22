@@ -581,7 +581,7 @@ body::after {
 .generate-options {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.5rem;
   flex-wrap: wrap;
 }
 
@@ -589,16 +589,20 @@ body::after {
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
+  background: rgba(255, 248, 232, 0.03);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
   font-family: var(--font-mono);
   font-size: 0.66rem;
   color: var(--cream-mid);
   text-transform: uppercase;
   letter-spacing: 0.06em;
+  padding: 0.35rem 0.45rem 0.35rem 0.6rem;
 }
 
 .language-select-label select,
 .language-custom-input {
-  background: var(--panel);
+  background: rgba(12, 11, 14, 0.72);
   border: 1px solid var(--panel-border);
   border-radius: 4px;
   color: var(--cream);
@@ -608,6 +612,15 @@ body::after {
   min-height: 2rem;
   outline: none;
   padding: 0.35rem 0.55rem;
+}
+
+.language-select-label select {
+  cursor: pointer;
+}
+
+.language-select-label select option {
+  background: #101014;
+  color: var(--cream);
 }
 
 .language-select-label select:focus,
