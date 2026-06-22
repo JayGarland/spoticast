@@ -408,6 +408,22 @@ def fetch_featured_playlists() -> list[dict]:
     return playlists
 
 
+def current_user_id() -> str | None:
+    """Return the connected Spotify user's id, or None if unavailable.
+
+    Used by the single-user guard to detect a foreign account connecting to an
+    instance that already belongs to someone else.
+    """
+    try:
+        sp = get_client()
+        me = sp.current_user()
+        return me.get("id") if me else None
+    except Exception as exc:  # noqa: BLE001 - identity check must fail closed
+        import logging
+        logging.getLogger(__name__).warning("current_user_id unavailable (%s)", exc)
+        return None
+
+
 def fetch_user_playlists(limit: int = 50, offset: int = 0) -> dict:
     """Return a page of playlists owned by the current user (not followed ones)."""
     sp = get_client()

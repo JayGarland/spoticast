@@ -18,6 +18,7 @@ from typing import Any
 
 _PROFILE_DIR = Path("generated") / "profile"
 _PROFILE_PATH = _PROFILE_DIR / "profile.json"
+_OWNER_PATH = _PROFILE_DIR / "owner_id"
 _PROFILE_VERSION = 1
 
 # Size caps — mirrors the variety.py _MAX_RECENT precedent
@@ -104,6 +105,31 @@ def reset_profile() -> dict:
     _PROFILE_DIR.mkdir(parents=True, exist_ok=True)
     _PROFILE_PATH.write_text(json.dumps(empty, indent=2))
     return empty
+
+
+def get_owner_id() -> str | None:
+    """Return the Spotify user id that owns this instance, or None if unclaimed."""
+    if _OWNER_PATH.exists():
+        return _OWNER_PATH.read_text(encoding="utf-8").strip() or None
+    return None
+
+
+def claim_or_check_owner(user_id: str | None) -> bool:
+    """Single-user guard. The first valid connect claims ownership of this instance.
+
+    Returns True if *user_id* is (or just became) the owner; False for any other
+    account or when the id is unknown. Used to stop a second Spotify account's data
+    from merging into the owner's profile (cross-user bleed). Not cleared by
+    reset_profile — clearing memory does not unlock the instance.
+    """
+    if not user_id:
+        return False
+    owner = get_owner_id()
+    if owner is None:
+        _PROFILE_DIR.mkdir(parents=True, exist_ok=True)
+        _OWNER_PATH.write_text(user_id, encoding="utf-8")
+        return True
+    return owner == user_id
 
 
 # ---------------------------------------------------------------------------

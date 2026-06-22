@@ -153,6 +153,15 @@ async def _auto_refresh_profile_on_connect() -> None:
         if spotify_src.get("connected") and profile_store.profile_has_content(profile):
             return
         loop = asyncio.get_event_loop()
+        # Single-user guard: the first connect claims ownership; a different
+        # account must not auto-populate (and merge into) the owner's profile.
+        owner_uid = await loop.run_in_executor(None, spotify_api.current_user_id)
+        if not profile_store.claim_or_check_owner(owner_uid):
+            logger.warning(
+                "Foreign Spotify account %s connected — skipping profile auto-refresh (single-user guard)",
+                owner_uid,
+            )
+            return
         saved_tracks = await loop.run_in_executor(None, spotify_api.fetch_saved_tracks)
         followed_artists = await loop.run_in_executor(None, spotify_api.fetch_followed_artists)
         profile = profile_store.summarize_library(saved_tracks, followed_artists, profile)
@@ -352,6 +361,13 @@ async def api_profile_refresh():
     if token is None:
         raise HTTPException(status_code=401, detail="Not authenticated")
     loop = asyncio.get_event_loop()
+    # Single-user guard (raised before the try so it isn't masked as a 500).
+    owner_uid = await loop.run_in_executor(None, spotify_api.current_user_id)
+    if not profile_store.claim_or_check_owner(owner_uid):
+        raise HTTPException(
+            status_code=403,
+            detail="This instance is locked to its owner account (single-user mode).",
+        )
     try:
         saved_tracks, followed_artists = await asyncio.gather(
             loop.run_in_executor(None, spotify_api.fetch_saved_tracks),
@@ -648,8 +664,12 @@ async def _run_generation(job: Job):
         # Slice Two: also run saved-cast + feedback summarizers.
         # Runs only when memory is enabled; must NOT block or fail generation.
         try:
+            # Single-user guard: only the owner account updates the profile.
+            _owner_uid = await asyncio.get_event_loop().run_in_executor(
+                None, spotify_api.current_user_id
+            )
             _profile = profile_store.load_profile()
-            if _profile.get("memory_enabled", True):
+            if _profile.get("memory_enabled", True) and profile_store.claim_or_check_owner(_owner_uid):
                 _profile = profile_store.summarize_context(context, _profile)
                 _profile = profile_store.summarize_saved_casts(_profile)
                 _profile = profile_store.fold_feedback_into_profile(_profile)

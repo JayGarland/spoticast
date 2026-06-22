@@ -21,6 +21,7 @@ def _run_tests() -> None:
         profile_mod._PROFILE_DIR = tmp_path / "profile"
         profile_mod._PROFILE_PATH = profile_mod._PROFILE_DIR / "profile.json"
         profile_mod._FEEDBACK_PATH = profile_mod._PROFILE_DIR / "feedback.jsonl"
+        profile_mod._OWNER_PATH = profile_mod._PROFILE_DIR / "owner_id"
 
         _test_empty_profile(profile_mod)
         _test_round_trip(profile_mod)
@@ -48,6 +49,7 @@ def _run_tests() -> None:
         _test_profile_patch_helpers(profile_mod)
         _test_prompt_includes_new_fields(profile_mod)
         _test_empty_profile_still_unchanged_with_new_fields(profile_mod)
+        _test_owner_guard(profile_mod)
 
     print("All profile tests passed ✓")
 
@@ -661,6 +663,19 @@ def _test_empty_profile_still_unchanged_with_new_fields(m):
     prompt = build_prompt(ctx)
     assert "PERSISTENT MEMORY" not in prompt
     print("  empty_profile_still_unchanged_with_new_fields ✓")
+
+
+def _test_owner_guard(m):
+    """Single-user guard: first connect claims ownership; others rejected; reset doesn't unlock."""
+    assert m.get_owner_id() is None
+    assert m.claim_or_check_owner("user_a") is True        # first connect claims ownership
+    assert m.get_owner_id() == "user_a"
+    assert m.claim_or_check_owner("user_a") is True         # same owner ok
+    assert m.claim_or_check_owner("user_b") is False        # foreign account rejected
+    assert m.claim_or_check_owner(None) is False            # unknown id fails closed
+    m.reset_profile()                                       # clearing memory must NOT unlock
+    assert m.get_owner_id() == "user_a"
+    print("  owner_guard ✓")
 
 
 if __name__ == "__main__":
