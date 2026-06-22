@@ -432,6 +432,15 @@ copy-paste), (2) orchestration quality vs RUG, (3) real cache savings on our act
 Migrate or dual-run only on that evidence; do not switch a working, gated workflow to a nascent tool
 on enthusiasm.
 
+Confirmed 2026-06-22: the Copilot CLI is **single-agent only** — its modes are
+interactive/plan/autopilot and there is no `runSubagent`/multi-agent capability in its flags or
+tools. RUG's SWE/QA subagents are a VS Code Copilot feature, so RUG-via-CLI implements directly
+(no internal decomposition or QA subagent). If true multi-agent manager orchestration is wanted,
+the candidates are **reasonix** (planner/executor split — addresses both multi-agent AND cache
+cost) and **Claude Code** (native subagents, already this chef's environment). For bounded tasks
+single-agent RUG is sufficient; multi-agent matters for large decomposition and the deep-research
+mode.
+
 ### RUG Manager
 
 Observed strengths:
