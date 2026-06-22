@@ -54,7 +54,7 @@ def _run_tests() -> None:
         _test_retry_after_formatting()
         _test_failed_episode_save(episodes)
         _test_generate_route_accepts_json_body()
-        _test_playlist_card_does_not_auto_generate()
+        _test_playlist_card_quick_generate()
         _test_cooldown_guard_in_server()
 
     print("All tests passed ✓")
@@ -468,8 +468,9 @@ def _test_generate_route_accepts_json_body():
     print("  generate_route_accepts_json_body ✓")
 
 
-def _test_playlist_card_does_not_auto_generate():
-    """Playlist cards should fill the form, not bypass language/options by auto-submit."""
+def _test_playlist_card_quick_generate():
+    """Playlist cards quick-generate via the form submit handler, which reads the
+    current language/incognito options — so the one-click action still respects them."""
     import re
 
     src = Path("resonova/web/player.js").read_text(encoding="utf-8")
@@ -477,12 +478,12 @@ def _test_playlist_card_does_not_auto_generate():
     assert match, "_handlePlaylistClick must exist"
     body = match.group("body")
 
-    assert "requestSubmit" not in body, (
-        "Playlist-card clicks must not auto-generate; user must be able to choose language/options"
+    assert "requestSubmit" in body, (
+        "Playlist-card clicks should quick-generate (requestSubmit) — the form submit handler "
+        "calls generate(), which reads the language/incognito options, so they are respected."
     )
-    assert "scrollIntoView" in body, "Playlist-card clicks should bring the form/options into view"
 
-    print("  playlist_card_does_not_auto_generate ✓")
+    print("  playlist_card_quick_generate ✓")
 
 
 if __name__ == "__main__":

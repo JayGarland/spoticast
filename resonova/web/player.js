@@ -2417,8 +2417,10 @@ class ResonovaPlayer {
     const input = document.getElementById('playlist-uri');
     input.value = uri;
     input.dispatchEvent(new Event('input', { bubbles: true }));
-    input.focus();
-    input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // Quick one-click: generate immediately. This goes through the form submit
+    // handler -> generate(), which reads the current language/incognito options,
+    // so card clicks already respect whatever is set on the form.
+    document.getElementById('generate-form').requestSubmit();
   }
 
   // ──────────────────────────────────────────────
