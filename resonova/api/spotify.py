@@ -319,7 +319,11 @@ def fetch_followed_artists(limit_total: int = 200) -> list[str]:
         page_size = 50
         after: str | None = None
         while len(results) < limit_total:
-            kwargs: dict = {"limit": page_size, "type": "artist"}
+            # spotipy's current_user_followed_artists(limit, after) hardcodes
+            # type=artist internally and does NOT accept a `type` kwarg — passing
+            # one raises TypeError, which the except below swallowed, so this fetch
+            # silently returned [] for every user. Do not re-add `type` here.
+            kwargs: dict = {"limit": page_size}
             if after:
                 kwargs["after"] = after
             batch = sp.current_user_followed_artists(**kwargs)
