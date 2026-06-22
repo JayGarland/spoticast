@@ -455,6 +455,17 @@ Budget reality (boss): Claude Code is best but running multi-agent on Claude is 
 reasonix (DeepSeek) or Copilot `/fleet` are cheaper. Decision unchanged for now: keep Copilot CLI as
 primary, explore `/fleet` and reasonix, revisit after the current build queue.
 
+Boss intent (2026-06-22): **when multi-agent works, keep using the CUSTOMIZED RUG agents** (RUG
+orchestrator + SWE/QA subagents) — the native single Copilot agent is only a stopgap / budget
+fallback, NOT the target. The custom RUG orchestration (with its separate QA-validation subagent) is
+the company manager design and the reason for gating discipline. Path to custom-RUG multi-agent via
+CLI: RUG delegates via VS Code's `agent/runSubagent`, which the standalone CLI does not expose to
+it, so we need either (a) adapt RUG to delegate through the CLI's `/fleet` / `/tasks` mechanism, or
+(b) a runner that gives custom agents subagent-spawning (Codex CLI custom subagents, or Claude Code
+custom subagents — port RUG+SWE+QA to that format). Investigation queued after the current build
+queue. Until then: native single-agent RUG for bounded slices is acceptable (gate harder — no QA
+subagent).
+
 ### RUG Manager
 
 Observed strengths:
