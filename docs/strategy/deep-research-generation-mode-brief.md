@@ -35,6 +35,10 @@ Worth pursuing as a **post-v0.1, opt-in mode** — but design it before building
 - **Cost/budget (the big one):** an agentic multi-step pipeline makes many more LLM/tool calls —
   potentially 5–20× the cost of a normal cast. Given the current budget pressure, this MUST be
   opt-in, budget-bounded (max steps / max spend per deep cast), and ideally owner-only at first.
+  Mitigation worth evaluating: **prefix-cache stability** — keep the prompt prefix stable across the
+  loop's steps so the provider's cache absorbs most tokens. This is the technique behind the boss's
+  `reasonix` repo (`github.com/esengine/deepseek-reasonix`); on DeepSeek's cache pricing it can cut
+  long-running cost dramatically, which could make a deep mode actually affordable.
 - **Latency/UX:** "takes longer" needs a real *deep-research-in-progress* state with streamed
   progress, not a silent long spinner. The existing SSE job pipeline can carry step updates.
 - **Quality risk:** more steps = more places to hallucinate or bleed. The locked rules still

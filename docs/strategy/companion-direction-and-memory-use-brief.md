@@ -164,6 +164,27 @@ change the listener's experience?* If a signal has no use, do not collect or per
 next design pass should produce a **per-signal data-use roadmap** (signal → how it changes the
 cast / the companion's behaviour), not more raw collection.
 
+## 4.1 Context / scenario-aware personalization (boss-raised 2026-06-22)
+
+Listening happens in real scenarios — the boss opens a playlist/cast **while riding/commuting,
+when alone, when at work.** A cast could adapt to the *situation*, not just taste: a focus-at-work
+cast is framed differently from an alone-in-the-evening one. This is a personalization axis
+**orthogonal to taste**, and an intuitive fit for the companion baseline.
+
+How to get the signal:
+
+- **Explicit (recommended start):** the user picks a context at generation — e.g. *commute /
+  focus·work / alone·evening / workout*. Simple, consent-clear, no inference creepiness, and it
+  sidesteps the surveillance line the audit drew (the user *tells* us the scenario).
+- **Inferred (later, optional):** time of day, weekday/weekend, Spotify device type
+  (phone / computer / car-Connect), playback context. Less reliable and creepier — defer.
+
+Chef note: a strong, low-risk axis to start with an **explicit context selector**, and it composes
+cleanly with stance B — the hosts frame the cast *for the scenario* without narrating the listener.
+Feeds the per-signal data-use roadmap (§4). Open: which contexts to offer; explicit-only vs add
+light inference later; whether the chosen context is per-cast or remembered as a preference (and if
+remembered, it is "trail"-class memory under §3.2).
+
 ## 5. CANDIDATE EXTENSION (experimental) — personal-wiki connector
 
 Boss's experimental idea: enrich the user profile by connecting the user's **personal wiki

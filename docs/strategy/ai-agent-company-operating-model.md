@@ -406,6 +406,22 @@ set `COPILOT_PROVIDER_BASE_URL` persistently before the key is in place, or copi
 Scoped alternative (DeepSeek for ONE run only, leaves global Copilot routing intact):
 `scripts/run-rug-deepseek.ps1` sets the vars in-process and invokes RUG.
 
+Setup status (2026-06-22): the boss has **completed** the persistent BYOK setup — DeepSeek is now
+the active model for the Copilot CLI, so manager runs use DeepSeek with no wrapper. Confirm the
+exact `COPILOT_MODEL` value works on a small task before a real build.
+
+### Candidate Manager — reasonix (cost-efficient DeepSeek, long-running)
+
+Boss-referenced: `https://github.com/esengine/deepseek-reasonix` — a Go terminal coding agent built
+for long-running sessions, kept cheap via **prefix-cache stability** (high DeepSeek cache-hit rate).
+Config-driven (`reasonix.toml`), multi-model (planner/executor in isolated cache sessions),
+MCP-compatible plugins, any OpenAI-compatible endpoint, `npm i -g reasonix`.
+
+Chef note: a credible **second manager option** for budget-sensitive / long-running implementation
+on DeepSeek, and its cache-stability technique is directly relevant to the deep-research generation
+mode's cost problem (`deep-research-generation-mode-brief.md`). Evaluate with a small trial before
+routing real work — not yet adopted; RUG remains the primary manager.
+
 ### RUG Manager
 
 Observed strengths:
