@@ -35,6 +35,9 @@ def _run_tests() -> None:
         _test_select_memories_for_prompt(profile_mod)
         _test_summarize_context_minimal(profile_mod)
         _test_summarize_context_with_lastfm(profile_mod)
+        _test_summarize_context_with_spotify_genres_only(profile_mod)
+        _test_summarize_context_with_both_sources(profile_mod)
+        _test_summarize_context_empty_genres(profile_mod)
         _test_empty_profile_prompt_unchanged()
         _test_disabled_profile_prompt_unchanged()
         _test_populated_profile_prompt_has_block()
@@ -262,6 +265,103 @@ def _test_summarize_context_with_lastfm(m):
     assert "electronica" in updated["taste_profile"]["recurring_styles"]
     assert updated["sources"]["lastfm"]["connected"] is True
     print("  summarize_context_with_lastfm ✓")
+
+
+def _test_summarize_context_with_spotify_genres_only(m):
+    """recurring_styles populated from Spotify genres when no Last.fm tags."""
+    context = {
+        "listener_profile": {
+            "top_artists_all_time": ["Artist A", "Artist B"],
+            "recently_played_count": 5,
+            "spotify_genres": ["ambient", "electronic", "ambient", "idm", "electronic"],
+        },
+        "artist_profiles": {},
+    }
+    p = m._empty_profile()
+    updated = m.summarize_context(context, p)
+    styles = updated["taste_profile"]["recurring_styles"]
+    # Frequency order: ambient (2), electronic (2), idm (1) — but ambient then electronic
+    # (stable by first occurrence per most_common? Actually Counter.most_common groups
+    # by count then insertion order. ambient and electronic both appear 2x; ambient first
+    # in the input so it should be first.)
+    assert styles[0] == "ambient", f"Expected ambient first, got {styles}"
+    assert styles[1] == "electronic", f"Expected electronic second, got {styles}"
+    assert styles[2] == "idm", f"Expected idm third, got {styles}"
+    assert updated["sources"]["lastfm"]["connected"] is False
+    print("  summarize_context_with_spotify_genres_only ✓")
+
+
+def _test_summarize_context_with_both_sources(m):
+    """recurring_styles merges Last.fm tags AND Spotify genres, deduped."""
+    context = {
+        "listener_profile": {
+            "top_artists_all_time": ["Four Tet"],
+            "recently_played_count": 5,
+            "spotify_genres": ["electronic", "idm", "ambient"],
+        },
+        "artist_profiles": {
+            "Four Tet": {"tags": ["electronica", "idm", "ambient"], "fan_era": "longtime fan"},
+        },
+        "lastfm_user": {"username": "testuser", "total_scrobbles": 50000},
+    }
+    p = m._empty_profile()
+    updated = m.summarize_context(context, p)
+    styles = updated["taste_profile"]["recurring_styles"]
+    # Last.fm tags first: electronica, idm, ambient
+    # Then Spotify genres (deduped): electronic
+    # Result: electronica, idm, ambient, electronic
+    assert styles[0] == "electronica", f"Expected electronica first, got {styles}"
+    assert "idm" in styles
+    assert "ambient" in styles
+    assert "electronic" in styles
+    # Verify no duplicates
+    assert len(styles) == len(set(styles)), f"Duplicates found in {styles}"
+    assert updated["sources"]["lastfm"]["connected"] is True
+    print("  summarize_context_with_both_sources ✓")
+
+
+def _test_summarize_context_empty_genres(m):
+    """Empty/missing spotify_genres does not crash and recurring_styles unchanged."""
+    # No spotify_genres key at all
+    context_no_key = {
+        "listener_profile": {
+            "top_artists_all_time": ["Artist A"],
+            "recently_played_count": 5,
+        },
+        "artist_profiles": {},
+    }
+    p = m._empty_profile()
+    updated = m.summarize_context(context_no_key, p)
+    assert updated["taste_profile"]["recurring_styles"] == []
+    print("  summarize_context_empty_genres (no key) ✓")
+
+    # Empty list
+    context_empty = {
+        "listener_profile": {
+            "top_artists_all_time": ["Artist A"],
+            "recently_played_count": 5,
+            "spotify_genres": [],
+        },
+        "artist_profiles": {},
+    }
+    p2 = m._empty_profile()
+    updated2 = m.summarize_context(context_empty, p2)
+    assert updated2["taste_profile"]["recurring_styles"] == []
+    print("  summarize_context_empty_genres (empty list) ✓")
+
+    # None value
+    context_none = {
+        "listener_profile": {
+            "top_artists_all_time": ["Artist A"],
+            "recently_played_count": 5,
+            "spotify_genres": None,
+        },
+        "artist_profiles": {},
+    }
+    p3 = m._empty_profile()
+    updated3 = m.summarize_context(context_none, p3)
+    assert updated3["taste_profile"]["recurring_styles"] == []
+    print("  summarize_context_empty_genres (None value) ✓")
 
 
 # ---------------------------------------------------------------------------

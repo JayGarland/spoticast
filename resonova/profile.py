@@ -221,12 +221,19 @@ def summarize_context(context: dict[str, Any], profile: dict | None = None,
         for tag in (ap.get("tags") or [])[:5]:
             if tag:
                 tag_counts[tag.lower()] = tag_counts.get(tag.lower(), 0) + 1
+    lastfm_styles: list[str] = []
     if tag_counts:
-        # Sort by frequency; merge with existing styles
-        new_styles = [t for t, _ in sorted(tag_counts.items(), key=lambda x: -x[1])]
-        existing_styles = taste.get("recurring_styles") or []
-        merged_styles = list(dict.fromkeys(new_styles + [s for s in existing_styles if s not in new_styles]))
-        taste["recurring_styles"] = merged_styles[:_MAX_LIST_ITEMS]
+        lastfm_styles = [t for t, _ in sorted(tag_counts.items(), key=lambda x: -x[1])]
+
+    # ── Recurring styles from Spotify genres ──────────────────────────────────
+    spotify_genres: list[str] = list(listener.get("spotify_genres") or [])
+
+    # Merge: Last.fm tags first (preserving frequency order), then Spotify genres,
+    # de-duplicated (preserving first occurrence order), capped.
+    existing_styles = taste.get("recurring_styles") or []
+    all_new = list(dict.fromkeys(lastfm_styles + spotify_genres))
+    merged_styles = list(dict.fromkeys(all_new + [s for s in existing_styles if s not in all_new]))
+    taste["recurring_styles"] = merged_styles[:_MAX_LIST_ITEMS]
 
     # ── Source provenance stamps ──────────────────────────────────────────────
     spotify_src = sources.setdefault("spotify", {})

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 from typing import Any
 
@@ -119,6 +120,7 @@ class UserContext:
     top_artists_medium: list[str]
     top_artists_long: list[str]
     recently_played: list[str]    # track URIs
+    top_genres: list[str]         # frequency-ranked, de-duplicated genre strings
 
 
 _KEY_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
@@ -247,22 +249,44 @@ def fetch_user_context() -> UserContext:
         r = sp.current_user_top_tracks(limit=50, time_range=term)
         return [t["uri"] for t in r["items"]] if r else []
 
-    def _top_artists(term: str) -> list[str]:
+    def _top_artists(term: str) -> tuple[list[str], list[str]]:
         r = sp.current_user_top_artists(limit=50, time_range=term)
-        return [a["name"] for a in r["items"]] if r else []
+        if not r:
+            return [], []
+        names = [a["name"] for a in r["items"]]
+        # Collect genres from each artist, then flatten
+        all_genres: list[str] = []
+        for a in r["items"]:
+            all_genres.extend(a.get("genres") or [])
+        return names, all_genres
 
     def _recent() -> list[str]:
         r = sp.current_user_recently_played(limit=50)
         return [item["track"]["uri"] for item in r["items"]] if r else []
 
+    names_short, genres_short = _top_artists("short_term")
+    names_medium, genres_medium = _top_artists("medium_term")
+    names_long, genres_long = _top_artists("long_term")
+
+    # Aggregate genres across all time ranges, frequency-ranked, de-duplicated
+    genre_counter: Counter = Counter()
+    for g in genres_short:
+        genre_counter[g] += 1
+    for g in genres_medium:
+        genre_counter[g] += 1
+    for g in genres_long:
+        genre_counter[g] += 1
+    aggregated_genres = [g for g, _ in genre_counter.most_common()]
+
     return UserContext(
         top_tracks_short=_top_tracks("short_term"),
         top_tracks_medium=_top_tracks("medium_term"),
         top_tracks_long=_top_tracks("long_term"),
-        top_artists_short=_top_artists("short_term"),
-        top_artists_medium=_top_artists("medium_term"),
-        top_artists_long=_top_artists("long_term"),
+        top_artists_short=names_short,
+        top_artists_medium=names_medium,
+        top_artists_long=names_long,
         recently_played=_recent(),
+        top_genres=aggregated_genres,
     )
 
 
@@ -513,5 +537,6 @@ def build_playlist_context(
         "listener_profile": {
             "top_artists_all_time": list(all_top_artists)[:20],
             "recently_played_count": len(recent_set),
+            "spotify_genres": user_ctx.top_genres,
         },
     }
