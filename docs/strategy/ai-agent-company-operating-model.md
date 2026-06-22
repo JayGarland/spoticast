@@ -385,6 +385,27 @@ Boundaries:
   `copilot --agent rug-agentic-workflow:rug-orchestrator --allow-all -C <repo>` (the BYOK env vars
   select the model).
 
+Making it persistent (no per-run wrapper — so future chef instances just inherit it):
+
+The CLI reads BYOK config from environment variables ONLY — there is no config-file or key-file
+setting, and it does NOT read a project `.env` (Resonova's `.env` is read by the Python app, not by
+`copilot`). To avoid a per-run wrapper, set the vars once as **persistent Windows user environment
+variables**:
+
+```
+setx COPILOT_PROVIDER_BASE_URL "https://api.deepseek.com"
+setx COPILOT_PROVIDER_TYPE "openai"
+setx COPILOT_MODEL "deepseek-chat"            # or deepseek-v4-pro if your account exposes it
+setx COPILOT_PROVIDER_API_KEY "<your key>"    # boss runs this one
+```
+
+After that, any `copilot` run uses DeepSeek with no wrapper. Caveats: this makes DeepSeek the model
+for ALL Copilot CLI usage (BYOK disables GitHub routing) — to revert, clear these vars; and do NOT
+set `COPILOT_PROVIDER_BASE_URL` persistently before the key is in place, or copilot runs fail auth.
+
+Scoped alternative (DeepSeek for ONE run only, leaves global Copilot routing intact):
+`scripts/run-rug-deepseek.ps1` sets the vars in-process and invokes RUG.
+
 ### RUG Manager
 
 Observed strengths:

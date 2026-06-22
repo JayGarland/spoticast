@@ -19,7 +19,9 @@ the memory layer is not data collection — it is a companion that grows with th
 - **Per-user isolation: enforce single-user now.** Lock the instance to the owner's Spotify
   identity — do not auto-populate/merge a second connecting account. This addresses the audit's
   Critical cross-user bleed before any second tester connects. Full per-user isolation (profile/
-  token keyed per Spotify id) is deferred as a manager task.
+  token keyed per Spotify id) is deferred as a manager task. **A visible owner indicator in the UI
+  is bundled with that user-management/isolation work (boss decision 2026-06-22), not added
+  standalone now** — the silent guard already protects.
 - **Still open:** the memory-control model (§3.2); the disable/reset fixes (depend on §3.2); the
   style-derivation implementation; field cleanup (deferred until the above settle).
 
@@ -133,6 +135,26 @@ Control surface to decide (not yet built):
 This model defines what the audit's disable/reset fixes (High + Med-High) must implement, so settle
 it before patching. Ties to §3.1 (a shared/public cast is effectively forced-Incognito for the
 private profile).
+
+### Decision (2026-06-22, boss + chef): memory-off is partial; Incognito is the clean one
+
+Boss decision: **"memory off" is a *partial* toggle** — it turns off the *data trace / user trail*
+(the accumulating behavioral trail), NOT a full wipe. Making it "all clean" would collide with
+**Incognito**, which is the full no-trace mode. **Chef: accepted** — this separates the two
+controls cleanly. Resulting model:
+
+- **Normal** — full personalization; trail accumulates.
+- **Memory off (partial)** — suppress and stop accumulating the *trail/trace* layer; the durable
+  *taste-as-a-lens* (top artists / derived styles) may still apply. A soft "don't track my trail,"
+  not a wipe.
+- **Incognito (per cast)** — this cast uses no personal data and writes nothing; stored memory is
+  left untouched.
+
+To pin down before implementing: the exact field set that counts as "trail" (suppressed by
+memory-off) vs "durable taste" (kept). Proposed trail set: `recent_shifts`, recently-played
+context, `playlist_patterns`. This refines what the audit's disable fix (High) must do — and note
+the separate honesty bug stands regardless: today's toggle doesn't even gate the always-on
+`LISTENER PROFILE` block.
 
 ## 4. PRINCIPLE — collect data only with a plan to use it
 
