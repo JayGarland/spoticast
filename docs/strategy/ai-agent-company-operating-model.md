@@ -466,6 +466,17 @@ custom subagents — port RUG+SWE+QA to that format). Investigation queued after
 queue. Until then: native single-agent RUG for bounded slices is acceptable (gate harder — no QA
 subagent).
 
+Cost-routing policy (chef recommendation, 2026-06-22): for budget, **default to single-agent RUG +
+DeepSeek + rigorous chef gate** for bounded slices — proven sufficient (memory-controls and mobile
+slices both landed correct with one chef gate-catch each; a multi-agent QA subagent is largely
+REDUNDANT with the chef gate on small tasks = double-paying for validation). Cost ladder, cheapest
+first: DeepSeek single-agent (near-free, cache-stable) < native Copilot single-agent (~Copilot
+credits/slice) < Copilot `/fleet` or reasonix multi-agent < Claude multi-agent (most expensive).
+Escalate to MULTI-AGENT only when a task is too large for one agent's context or needs genuine
+parallel decomposition (e.g. the deep-research mode, large refactors) — and even then prefer the
+cheaper multi-agent runners. So: single-agent DeepSeek by default; multi-agent only when task size
+demands it.
+
 ### RUG Manager
 
 Observed strengths:
