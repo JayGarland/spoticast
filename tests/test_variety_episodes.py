@@ -55,6 +55,7 @@ def _run_tests() -> None:
         _test_failed_episode_save(episodes)
         _test_generate_route_accepts_json_body()
         _test_playlist_card_quick_generate()
+        _test_mobile_hidden_spotify_attempts_before_deferring()
         _test_cooldown_guard_in_server()
 
     print("All tests passed ✓")
@@ -484,6 +485,20 @@ def _test_playlist_card_quick_generate():
     )
 
     print("  playlist_card_quick_generate ✓")
+
+
+def _test_mobile_hidden_spotify_attempts_before_deferring():
+    """Hidden mobile playback should try Spotify before falling back to unlock/return copy."""
+    src = Path("resonova/web/player.js").read_text(encoding="utf-8")
+
+    assert "play:spotify:pending-unlock" not in src, (
+        "Spotify segments should not be preemptively deferred just because the page is hidden."
+    )
+    assert "play:spotify:connect-missing-hidden" in src, (
+        "Hidden-page Spotify Connect failure still needs a fallback that resumes on foreground."
+    )
+
+    print("  mobile_hidden_spotify_attempts_before_deferring ✓")
 
 
 if __name__ == "__main__":

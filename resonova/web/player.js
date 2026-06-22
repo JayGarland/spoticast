@@ -70,7 +70,7 @@ class ResonovaPlayer {
     this._lastConnectedRefresh = 0; // timestamp of last _loadEpisodes call from _showState
     this._metaPrefetch = new Set(); // in-flight Spotify metadata prefetch guard (keyed by URI)
     this._missingTailRecoveryPromise = null;
-    this._pendingUnlockItem = null; // Spotify segment deferred because page was hidden (mobile lock)
+    this._pendingUnlockItem = null; // Spotify segment deferred after hidden-page Spotify Connect failure
     this._activeGenerationId = null;
     this._activeGenerationName = '';
     this._activeGenerationSource = '';
@@ -1678,23 +1678,6 @@ class ResonovaPlayer {
     this._isPaused = false;
     this._updatePlayPauseButton();
     this._setSegmentType('spotify');
-
-    // Req 1: Do not start a Spotify segment while the page is hidden ON MOBILE (lock/background).
-    // On mobile the Web Playback SDK device stops being visible to Spotify Connect while
-    // backgrounded; on desktop a hidden tab keeps playing fine, so only defer on mobile to
-    // preserve desktop background playback. Store the pending track and show non-fatal copy;
-    // visibilitychange will resume it.
-    if (document.hidden && /Android|iPhone|iPad|iPod|Mobi/i.test(navigator.userAgent)) {
-      this._obsRecord('play:spotify:pending-unlock', item.uri.slice(-24));
-      this._pendingUnlockItem = item;
-      this._setNowPlaying('Spotify waiting for phone unlock', 'Unlock your phone to resume');
-      document.getElementById('next-up').textContent = '';
-      document.getElementById('waveform').classList.add('spotify-mode');
-      document.getElementById('progress-fill').classList.add('spotify-mode');
-      document.getElementById('waveform').classList.remove('paused');
-      this._updateSkipMusicButton();
-      return;
-    }
 
     this._setNowPlaying(item.name || 'Spotify music', item.artist || 'Connecting to Spotify...');
     document.getElementById('next-up').textContent = '';
