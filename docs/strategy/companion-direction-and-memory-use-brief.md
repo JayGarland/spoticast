@@ -185,6 +185,24 @@ Feeds the per-signal data-use roadmap (§4). Open: which contexts to offer; expl
 light inference later; whether the chosen context is per-cast or remembered as a preference (and if
 remembered, it is "trail"-class memory under §3.2).
 
+### Reconsidered (2026-06-22): DROP the explicit scenario selector — redundant + awkward
+
+Boss reconsidered: a scenario selector is **redundant and awkward**. The **playlist already conveys
+the vibe** — you can't make a techno playlist feel "quiet" via commentary, so a separately-declared
+scenario would conflict with the music rather than help. And the UX should not ask the user to pick a
+scenario before/alongside the playlist. The scenario idea came from reasoning *in reverse* ("when you
+open a playlist you're probably alone or driving"), but normally the flow is just: **put in a
+playlist → generate.** That baseline stays simple.
+
+**Chef: agree.** The playlist is the primary vibe signal; commentary should match the music, not a
+declared scenario that may contradict it; a mandatory scenario pick adds friction and breaks the
+baseline. **Decision: do NOT build the explicit context/scenario selector.** Removed from the build
+queue.
+
+Still open (needs consolidation, not queued): optional, lightweight customization is acceptable (the
+boss agrees) — but it must be optional, must not contradict the playlist's vibe, and must not become
+a "pick a scenario first" gate. Park until a concrete, non-awkward form is consolidated.
+
 ## 5. CANDIDATE EXTENSION (experimental) — personal-wiki connector
 
 Boss's experimental idea: enrich the user profile by connecting the user's **personal wiki

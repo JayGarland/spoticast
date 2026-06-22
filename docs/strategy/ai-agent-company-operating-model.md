@@ -477,6 +477,29 @@ parallel decomposition (e.g. the deep-research mode, large refactors) — and ev
 cheaper multi-agent runners. So: single-agent DeepSeek by default; multi-agent only when task size
 demands it.
 
+### Pre-Flight: Single-Agent vs Multi-Agent (CHECK before every CLI manager task)
+
+The chef MUST run this check before routing a task to a CLI manager agent. Default is single-agent;
+go multi-agent only if a trigger fires.
+
+1. **Brief test** — can you write ONE tight brief with explicit, verifiable acceptance criteria?
+   If you cannot, the task is too big/vague → split into bounded single-agent runs, or go multi-agent.
+2. **Scope** — ≈1–5 files / one coherent concern? → single-agent. Many files with interdependencies → trigger.
+3. **Context window** — would one agent plausibly hold the whole task without forgetting early parts?
+   If it would blow the context window → trigger.
+4. **Decomposition** — does it naturally split into 3+ INDEPENDENT sub-tasks, or genuine separate
+   research → plan → implement → review phases? → trigger.
+5. **Validation** — can the chef gate + tests fully verify it? If an independent QA pass would add
+   real value beyond the chef gate (high-risk, subtle correctness) → consider a trigger.
+
+Decision: if ANY of (3), (4), or a strong (5) fires → MULTI-AGENT (use RUG's true orchestration when
+it becomes available via `/fleet` or a multi-agent runner; until then, split into several bounded
+single-agent runs). Otherwise → SINGLE-AGENT on DeepSeek.
+
+Regardless of choice, ALWAYS gate hard afterward: re-run validation independently, read the risky
+diffs, and for any frontend change run `node --check` + a browser load — single-agent has no internal
+QA subagent, so the chef gate is the only QA.
+
 ### RUG Manager
 
 Observed strengths:
