@@ -413,8 +413,41 @@ Budget should influence:
 - Whether to use a web UI discussion or a CLI worker.
 - Whether repeated failure should lead to firing/replacement.
 - Which model tier is used for a manager task.
+- Which provider/model is used for product research, script writing, and TTS.
+- Whether a full cast generation is justified for a test, or whether cached/partial/offline validation is enough.
 - Whether the active chef-role holder remains the right fit for the current period.
 - Whether a backup chef should be used when the active chef is unavailable, over budget, or not the best fit.
+
+## Budget And Model Resource Policy
+
+Resonova should prepare fallback and optional models for budget control. This applies to both product generation and agent labor.
+
+Product generation cost concern:
+
+- A roughly 10-song cast generation currently costs about 0.6 EUR end to end after research, script writing, and voice synthesis.
+- This cost is acceptable for owner testing but can become a problem when usage increases, when customer testing begins, or when experimental tests repeatedly trigger full generation.
+- Future features that add larger context, richer memory/profile injection, or more prompt material may increase text-generation and TTS cost.
+- Tests should avoid full paid generation when a cheaper validation path is enough: cached fixtures, partial generation, offline inspection, one-track smoke tests, or mocked/cached research.
+
+Model fallback domains to maintain:
+
+- Research model: keep a cheaper fallback for grounded/background research where quality loss is acceptable.
+- Script-writing model: keep at least one lower-cost text-generation option for drafts, experiments, and non-production tests.
+- TTS model: keep fallback or optional TTS providers/models because voice synthesis is a recurring cost driver and can block the whole generation flow.
+
+Current candidate options and preferences:
+
+- `deepseek-v4-pro` is a boss-named candidate for text generation and manager-agent work when the runtime supports explicit model selection.
+- For development manager-agent work, prefer DeepSeek or another cheaper capable model as the primary choice or at least an available option when quality is sufficient.
+- The current integrated Copilot-manager path may consume the boss's personal Copilot Pro+ subscription/credits, so it should not be treated as free infrastructure.
+- Cheaper Chinese models may be acceptable for dev, trials, manager implementation, research drafts, or non-production exploration if they preserve enough evidence quality and scope discipline.
+
+Guardrails:
+
+- Do not change production model/provider defaults solely for cost without boss-chef discussion.
+- Do not assume a cheaper model is acceptable for release-facing script quality or TTS quality without A/B evidence.
+- Record model/provider used in expensive trials, manager reviews, or generation-cost investigations when practical.
+- Budget thresholds remain private to the boss; agents may flag cost pressure but must not invent hard thresholds.
 
 Current chef staffing note:
 
