@@ -401,8 +401,7 @@ def build_prompt(context: dict[str, Any]) -> str:
 
 ═══ LISTENER PROFILE ═══
 {chr(10).join(listener_lines)}
-{persistent_memory_section}
-{language_section}
+{persistent_memory_section}{language_section}
 ═══ PLAYLIST OVERVIEW ═══
 {summary['total_tracks']} tracks | Avg energy: {summary['avg_energy']} | Avg valence: {summary['avg_valence']} | Avg tempo: {summary['avg_tempo']} BPM
 {summary['personal_favorites_count']} tracks are Spotify top tracks | {summary.get('lastfm_total_plays', 0)} total Last.fm plays across playlist

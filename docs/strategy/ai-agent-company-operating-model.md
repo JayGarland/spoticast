@@ -76,6 +76,11 @@ Authority:
 - Chef may prepare or create PRs and pipeline changes only under the company's authority model.
 - Chef must discuss non-trivial or decisional actions with the boss before acting.
 - Chef must not let manager agents approve their own work.
+- A non-trivial FEATURE (multi-file / full-stack) is heavy implementation: route it to a manager and
+  gate it before commit — even when the chef could build it directly. Chef-built feature code is NOT
+  exempt from the manager-route + gate-before-commit discipline; only small fixes, polish, and gate
+  corrections are. (Reinforced 2026-06-22 after a chef instance built and committed a full-stack
+  language feature solo — the work was sound, but the routing + pre-commit gate were skipped.)
 
 ## Specialized Chef Policy
 
