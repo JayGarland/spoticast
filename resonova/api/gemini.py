@@ -213,28 +213,34 @@ def build_prompt(context: dict[str, Any]) -> str:
     artist_profiles: dict[str, dict] = context.get("artist_profiles", {})
     lastfm_user: dict = context.get("lastfm_user", {})
     persistent_profile: dict | None = context.get("persistent_profile")
+    incognito: bool = context.get("incognito", False)
 
     has_lastfm = bool(lastfm_user)
 
     # ── Listener overview ────────────────────────────────────────────────────
     listener_lines: list[str] = []
-    if has_lastfm:
-        listener_lines.append(
-            f"Last.fm user '{lastfm_user.get('username')}' — "
-            f"{lastfm_user.get('total_scrobbles', '?')} total scrobbles, "
-            f"listening since {lastfm_user.get('member_since', '?')}"
-        )
-    top_artists = (
-        profile.get("lastfm_top_artists")
-        or list(profile.get("top_artists_all_time", []))
-    )
-    if top_artists:
-        listener_lines.append("Top artists all-time: " + ", ".join(top_artists[:15]))
 
-    if summary.get("lastfm_total_plays"):
-        listener_lines.append(
-            f"Total plays of playlist tracks on Last.fm: {summary['lastfm_total_plays']}"
+    # Incognito: omit entire LISTENER PROFILE and PERSISTENT MEMORY blocks.
+    if incognito:
+        listener_lines.append("(Incognito mode — no listener profile data)")
+    else:
+        if has_lastfm:
+            listener_lines.append(
+                f"Last.fm user '{lastfm_user.get('username')}' — "
+                f"{lastfm_user.get('total_scrobbles', '?')} total scrobbles, "
+                f"listening since {lastfm_user.get('member_since', '?')}"
+            )
+        top_artists = (
+            profile.get("lastfm_top_artists")
+            or list(profile.get("top_artists_all_time", []))
         )
+        if top_artists:
+            listener_lines.append("Top artists all-time: " + ", ".join(top_artists[:15]))
+
+        if summary.get("lastfm_total_plays"):
+            listener_lines.append(
+                f"Total plays of playlist tracks on Last.fm: {summary['lastfm_total_plays']}"
+            )
 
     # ── Artist profiles ──────────────────────────────────────────────────────
     artist_section_lines: list[str] = []
@@ -310,16 +316,19 @@ def build_prompt(context: dict[str, Any]) -> str:
 
     track_section = "\n".join(_track_block(i, t) for i, t in enumerate(tracks))
 
-    # ── Persistent memory block (omitted when empty or disabled) ─────────────
+    # ── Persistent memory block (omitted when incognito or empty; PARTIAL when
+    #    memory_enabled is False — DURABLE fields only, no TRAIL) ────────────
     persistent_memory_section = ""
     if (
         persistent_profile is not None
-        and persistent_profile.get("memory_enabled", True)
+        and not incognito
         and profile_store.profile_has_content(persistent_profile)
     ):
         mem_lines: list[str] = []
-
+        memory_enabled = persistent_profile.get("memory_enabled", True)
         taste = persistent_profile.get("taste_profile", {})
+
+        # DURABLE fields: always included when memory is available.
         top_artists = taste.get("top_artists", [])[:5]
         if top_artists:
             mem_lines.append("Taste — top artists: " + ", ".join(top_artists))
@@ -332,9 +341,13 @@ def build_prompt(context: dict[str, Any]) -> str:
         if eras:
             mem_lines.append("Taste — favourite eras: " + ", ".join(eras))
 
-        recent_shifts = taste.get("recent_shifts", [])[:5]
-        if recent_shifts:
-            mem_lines.append("Taste — current listening: " + ", ".join(recent_shifts))
+        # TRAIL fields: only when memory_enabled is True (full personalization).
+        # playlist_patterns is intentionally NOT rendered into the prompt (behavioral
+        # narration the audit flagged; keep memory-on byte-for-byte unchanged).
+        if memory_enabled:
+            recent_shifts = taste.get("recent_shifts", [])[:5]
+            if recent_shifts:
+                mem_lines.append("Taste — current listening: " + ", ".join(recent_shifts))
 
         saved_lib = taste.get("saved_library_artists", [])[:5]
         if saved_lib:

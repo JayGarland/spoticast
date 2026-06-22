@@ -100,10 +100,15 @@ def save_profile(profile: dict) -> None:
 
 
 def reset_profile() -> dict:
-    """Wipe profile to an empty skeleton; saved cast episodes are untouched."""
+    """Wipe profile to an empty skeleton; saved cast episodes are untouched.
+
+    Also deletes the feedback file so cleared preferences do not resurrect.
+    """
     empty = _empty_profile()
     _PROFILE_DIR.mkdir(parents=True, exist_ok=True)
     _PROFILE_PATH.write_text(json.dumps(empty, indent=2))
+    if _FEEDBACK_PATH.exists():
+        _FEEDBACK_PATH.unlink()
     return empty
 
 
@@ -171,11 +176,15 @@ def _enforce_caps(profile: dict) -> dict:
 # Context summariser (Slice One: Spotify context + Last.fm enrichment only)
 # ---------------------------------------------------------------------------
 
-def summarize_context(context: dict[str, Any], profile: dict | None = None) -> dict:
+def summarize_context(context: dict[str, Any], profile: dict | None = None,
+                      memory_enabled: bool = True) -> dict:
     """Update the profile from an already-fetched generation context.
 
     Uses only data already in *context* — zero new Spotify fetches or scopes.
     Call after build_playlist_context() (and optionally enrich_context()).
+
+    When *memory_enabled* is False, TRAIL fields (recent_shifts, playlist_patterns)
+    are not written.  DURABLE fields are always updated.
 
     Returns the updated profile dict (caller must call save_profile to persist).
     """
@@ -245,6 +254,7 @@ def summarize_library(
     saved_tracks: list[dict],
     followed_artists: list[str],
     profile: dict | None = None,
+    memory_enabled: bool = True,
 ) -> dict:
     """Update the profile from saved tracks and followed artists.
 
@@ -257,6 +267,9 @@ def summarize_library(
     - The older remainder represent DURABLE long-term taste
       → feeds taste_profile.saved_library_artists.
     - followed_artists → taste_profile.followed_artists (explicit affinity).
+
+    When *memory_enabled* is False, TRAIL fields (recent_shifts) are not written.
+    DURABLE fields (saved_library_artists, followed_artists) are always updated.
 
     Returns the updated profile dict (caller must call save_profile to persist).
     """
@@ -280,21 +293,22 @@ def summarize_library(
         recent_tracks = saved_tracks[:_RECENT_TRACK_WINDOW]
         older_tracks = saved_tracks[_RECENT_TRACK_WINDOW:]
 
-        # Recent: deduplicated artist names (preserve order, newest-addition first)
-        recent_artists: list[str] = []
-        seen: set[str] = set()
-        for t in recent_tracks:
-            for name in t.get("artist_names", []):
-                if name and name not in seen:
-                    seen.add(name)
-                    recent_artists.append(name)
+        # TRAIL: recent_shifts only written when memory_enabled is True
+        if memory_enabled:
+            recent_artists: list[str] = []
+            seen: set[str] = set()
+            for t in recent_tracks:
+                for name in t.get("artist_names", []):
+                    if name and name not in seen:
+                        seen.add(name)
+                        recent_artists.append(name)
 
-        if recent_artists:
-            existing_shifts = taste.get("recent_shifts") or []
-            merged_shifts = list(dict.fromkeys(
-                recent_artists + [a for a in existing_shifts if a not in recent_artists]
-            ))
-            taste["recent_shifts"] = merged_shifts[:_MAX_LIST_ITEMS]
+            if recent_artists:
+                existing_shifts = taste.get("recent_shifts") or []
+                merged_shifts = list(dict.fromkeys(
+                    recent_artists + [a for a in existing_shifts if a not in recent_artists]
+                ))
+                taste["recent_shifts"] = merged_shifts[:_MAX_LIST_ITEMS]
 
         # Older tracks → saved_library_artists (durable long-term taste)
         durable_artists: list[str] = []
@@ -339,12 +353,14 @@ def summarize_library(
 # Saved-cast-history summarizer (Slice Two, Section D)
 # ---------------------------------------------------------------------------
 
-def summarize_saved_casts(profile: dict | None = None) -> dict:
+def summarize_saved_casts(profile: dict | None = None,
+                          memory_enabled: bool = True) -> dict:
     """Derive patterns from the existing saved episode library.
 
     Reads episodes via episodes.list_episodes() — zero new scopes or API calls.
-    - Sets sources.resonova.saved_cast_count to the real count.
-    - Derives playlist_patterns from episode naming patterns.
+    - Sets sources.resonova.saved_cast_count to the real count (always).
+    - Derives playlist_patterns from episode naming patterns (TRAIL — only when
+      *memory_enabled* is True).
 
     Returns the updated profile dict (caller must call save_profile to persist).
     """
@@ -377,19 +393,20 @@ def summarize_saved_casts(profile: dict | None = None) -> dict:
             if pl_name and pl_name not in ("Custom tracks", ""):
                 playlist_name_counts[pl_name] += 1
 
-        patterns: list[str] = []
-        for name, count in playlist_name_counts.most_common(5):
-            if count >= 2:
-                patterns.append(f"frequently casts from '{name}'")
-            elif count == 1:
-                patterns.append(f"cast from '{name}'")
+        if memory_enabled:
+            patterns: list[str] = []
+            for name, count in playlist_name_counts.most_common(5):
+                if count >= 2:
+                    patterns.append(f"frequently casts from '{name}'")
+                elif count == 1:
+                    patterns.append(f"cast from '{name}'")
 
-        if patterns:
-            existing_patterns = taste.get("playlist_patterns") or []
-            # Remove stale cast-derived patterns before re-deriving
-            kept = [p for p in existing_patterns if not p.startswith(("frequently casts from", "cast from"))]
-            merged = list(dict.fromkeys(patterns + kept))
-            taste["playlist_patterns"] = merged[:_MAX_LIST_ITEMS]
+            if patterns:
+                existing_patterns = taste.get("playlist_patterns") or []
+                # Remove stale cast-derived patterns before re-deriving
+                kept = [p for p in existing_patterns if not p.startswith(("frequently casts from", "cast from"))]
+                merged = list(dict.fromkeys(patterns + kept))
+                taste["playlist_patterns"] = merged[:_MAX_LIST_ITEMS]
 
     profile["profile_version"] = _PROFILE_VERSION
     return profile

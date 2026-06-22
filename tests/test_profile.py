@@ -50,6 +50,12 @@ def _run_tests() -> None:
         _test_prompt_includes_new_fields(profile_mod)
         _test_empty_profile_still_unchanged_with_new_fields(profile_mod)
         _test_owner_guard(profile_mod)
+        # Memory Controls v1 tests
+        _test_reset_deletes_feedback(profile_mod)
+        _test_memory_off_prompt_omits_trail()
+        _test_memory_on_prompt_contains_both()
+        _test_incognito_prompt_omits_all()
+        _test_summarizers_skip_trail_when_memory_disabled(profile_mod)
 
     print("All profile tests passed ✓")
 
@@ -308,7 +314,7 @@ def _test_empty_profile_prompt_unchanged():
 
 
 def _test_disabled_profile_prompt_unchanged():
-    """memory_enabled=False profile → no memory block injected."""
+    """memory_enabled=False → PERSISTENT MEMORY block injected with DURABLE fields only."""
     from resonova.api.gemini import build_prompt
     ctx = _make_minimal_context()
     ctx["persistent_profile"] = {
@@ -318,9 +324,11 @@ def _test_disabled_profile_prompt_unchanged():
         "commentary_preferences": {},
     }
     prompt = build_prompt(ctx)
-    assert "PERSISTENT MEMORY" not in prompt, (
-        "Disabled profile must not inject a PERSISTENT MEMORY block"
+    # Memory-off is PARTIAL: DURABLE fields still appear, TRAIL fields suppressed.
+    assert "PERSISTENT MEMORY" in prompt, (
+        "Memory-off profile must still inject a PERSISTENT MEMORY block (DURABLE fields)"
     )
+    assert "Radiohead" in prompt, "DURABLE top_artists should appear in memory-off prompt"
     print("  disabled_profile_prompt_unchanged ✓")
 
 
@@ -676,6 +684,172 @@ def _test_owner_guard(m):
     m.reset_profile()                                       # clearing memory must NOT unlock
     assert m.get_owner_id() == "user_a"
     print("  owner_guard ✓")
+
+
+# ---------------------------------------------------------------------------
+# Memory Controls v1 tests
+# ---------------------------------------------------------------------------
+
+def _test_reset_deletes_feedback(m):
+    """reset_profile must delete feedback.jsonl so cleared prefs don't resurrect."""
+    import json
+
+    # Write a feedback event
+    m._PROFILE_DIR.mkdir(parents=True, exist_ok=True)
+    m.append_feedback({
+        "id": "fb_reset_test",
+        "episode_id": "ep_reset",
+        "segment_index": None,
+        "verdict": "up",
+        "tags": ["good story"],
+        "note": None,
+        "created_at": "2026-06-22T00:00:00+00:00",
+    })
+    assert m._FEEDBACK_PATH.exists(), "feedback.jsonl should exist after append"
+
+    # Reset
+    m.reset_profile()
+
+    assert not m._FEEDBACK_PATH.exists(), (
+        "feedback.jsonl must be deleted after reset_profile"
+    )
+    print("  reset_deletes_feedback ✓")
+
+
+def _test_memory_off_prompt_omits_trail():
+    """memory_enabled=False → DURABLE fields present, TRAIL fields absent."""
+    from resonova.api.gemini import build_prompt
+
+    ctx = _make_minimal_context()
+    ctx["persistent_profile"] = {
+        "memory_enabled": False,
+        "taste_profile": {
+            "top_artists": ["DurableArtist"],          # DURABLE
+            "recurring_styles": ["ambient"],
+            "favorite_eras": ["1990s"],
+            "recent_shifts": ["TrailArtist"],           # TRAIL
+            "playlist_patterns": ["frequently casts from 'X'"],  # TRAIL
+            "saved_library_artists": ["LibArtist"],
+            "followed_artists": ["FolArtist"],
+        },
+        "memories": [],
+        "commentary_preferences": {"tone": [], "depth": "balanced", "avoid": [], "loved_patterns": []},
+    }
+    prompt = build_prompt(ctx)
+
+    # DURABLE marker must be present
+    assert "DurableArtist" in prompt, (
+        "DURABLE top_artists should appear in memory-off prompt"
+    )
+
+    # TRAIL markers must be absent
+    assert "TrailArtist" not in prompt, (
+        "TRAIL recent_shifts must NOT appear in memory-off prompt"
+    )
+    assert "frequently casts from" not in prompt, (
+        "TRAIL playlist_patterns must NOT appear in memory-off prompt"
+    )
+    print("  memory_off_prompt_omits_trail ✓")
+
+
+def _test_memory_on_prompt_contains_both():
+    """memory_enabled=True → both DURABLE and TRAIL fields present."""
+    from resonova.api.gemini import build_prompt
+
+    ctx = _make_minimal_context()
+    ctx["persistent_profile"] = {
+        "memory_enabled": True,
+        "taste_profile": {
+            "top_artists": ["DurableMain"],             # DURABLE
+            "recurring_styles": ["ambient"],
+            "favorite_eras": [],
+            "recent_shifts": ["TrailShiftArtist"],      # TRAIL
+            "playlist_patterns": ["frequently casts from 'Night'"],  # TRAIL
+            "saved_library_artists": [],
+            "followed_artists": [],
+        },
+        "memories": [],
+        "commentary_preferences": {"tone": [], "depth": "balanced", "avoid": [], "loved_patterns": []},
+    }
+    prompt = build_prompt(ctx)
+
+    assert "DurableMain" in prompt, "DURABLE fields must appear in memory-on prompt"
+    assert "TrailShiftArtist" in prompt, "TRAIL fields must appear in memory-on prompt"
+    print("  memory_on_prompt_contains_both ✓")
+
+
+def _test_incognito_prompt_omits_all():
+    """incognito=True → neither LISTENER PROFILE nor PERSISTENT MEMORY."""
+    from resonova.api.gemini import build_prompt
+
+    ctx = _make_minimal_context()
+    # Add a populated persistent profile so we can confirm it's suppressed
+    ctx["persistent_profile"] = {
+        "memory_enabled": True,
+        "taste_profile": {
+            "top_artists": ["TopArtist"],
+            "recurring_styles": [],
+            "favorite_eras": [],
+            "recent_shifts": ["ShiftArtist"],
+            "playlist_patterns": [],
+            "saved_library_artists": [],
+            "followed_artists": [],
+        },
+        "memories": [{"id": "m1", "text": "A memory", "source": "feedback",
+                      "confidence": "high", "pinned": False,
+                      "created_at": "2026-06-22T00:00:00+00:00"}],
+        "commentary_preferences": {"tone": [], "depth": "balanced", "avoid": [], "loved_patterns": []},
+    }
+    # Set listener_profile with top artists so we can test it's suppressed
+    ctx["listener_profile"] = {
+        "top_artists_all_time": ["ListenerTop"],
+        "recently_played_count": 5,
+    }
+    ctx["incognito"] = True
+
+    prompt = build_prompt(ctx)
+
+    assert "Top artists all-time" not in prompt, (
+        "LISTENER PROFILE must be omitted in incognito mode"
+    )
+    assert "PERSISTENT MEMORY" not in prompt, (
+        "PERSISTENT MEMORY must be omitted in incognito mode"
+    )
+    assert "TopArtist" not in prompt, (
+        "Profile data must not appear in incognito prompt"
+    )
+    print("  incognito_prompt_omits_all ✓")
+
+
+def _test_summarizers_skip_trail_when_memory_disabled(m):
+    """summarize_library with memory_enabled=False must skip recent_shifts but
+    still update DURABLE fields (saved_library_artists)."""
+    # Create saved tracks (50 recent + 30 old)
+    saved_tracks = []
+    for i in range(80):
+        saved_tracks.append({
+            "artist_names": [f"RecentA{i}" if i < 50 else f"OldA{i - 50}"],
+            "added_at": f"2026-06-{(80 - i):02d}T00:00:00+00:00",
+        })
+
+    p = m._empty_profile()
+    updated = m.summarize_library(saved_tracks, ["FollowedX"], p, memory_enabled=False)
+
+    # TRAIL: recent_shifts must NOT be written
+    recent = updated["taste_profile"]["recent_shifts"]
+    assert recent == [], (
+        f"recent_shifts should be empty when memory_enabled=False, got {recent}"
+    )
+
+    # DURABLE: saved_library_artists and followed_artists must still be written
+    durable = updated["taste_profile"]["saved_library_artists"]
+    assert any("OldA" in a for a in durable), (
+        f"saved_library_artists must still be populated: {durable}"
+    )
+    assert "FollowedX" in updated["taste_profile"]["followed_artists"], (
+        "followed_artists must still be updated"
+    )
+    print("  summarizers_skip_trail_when_memory_disabled ✓")
 
 
 if __name__ == "__main__":

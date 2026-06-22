@@ -57,6 +57,7 @@ class Job:
         self.playlist_uri = playlist_uri
         self.playlist_name: str = ""
         self.track_uris: list[str] | None = None
+        self.incognito: bool = False
         self.status: str = "pending"   # pending | running | done | error
         self.events: list[dict] = []
         self.queue: list[dict] | None = None
@@ -424,6 +425,7 @@ async def api_feedback(req: FeedbackRequest):
 class GenerateRequest(BaseModel):
     playlist_uri: str | None = None
     track_uris: list[str] | None = None
+    incognito: bool = False
 
 
 @app.post("/generate")
@@ -443,6 +445,7 @@ async def generate(req: GenerateRequest):
     source = req.playlist_uri or "track_list"
     job = Job(job_id, source)
     job.track_uris = req.track_uris
+    job.incognito = req.incognito
     _jobs[job_id] = job
 
     # Run generation in background so we can stream progress
@@ -563,13 +566,18 @@ async def _run_generation(job: Job):
         # Attach playlist name to context so generate_episode_name can use it
         context["playlist_name"] = job.playlist_name
 
+        # Incognito flag: signals build_prompt to omit all personalization blocks
+        context["incognito"] = job.incognito
+
         # Attach profile to context for prompt injection (non-blocking; missing = omit block)
-        try:
-            _prompt_profile = profile_store.load_profile()
-            if _prompt_profile.get("memory_enabled", True):
-                context["persistent_profile"] = _prompt_profile
-        except Exception as _pe:
-            logger.warning("Could not load profile for prompt: %s", _pe)
+        # Omitted entirely for incognito casts (no personalization at all).
+        if not job.incognito:
+            try:
+                _prompt_profile = profile_store.load_profile()
+                if _prompt_profile.get("memory_enabled", True):
+                    context["persistent_profile"] = _prompt_profile
+            except Exception as _pe:
+                logger.warning("Could not load profile for prompt: %s", _pe)
 
         script, episode_name = await asyncio.gather(
             gemini_api.generate_script(context),
@@ -662,20 +670,29 @@ async def _run_generation(job: Job):
 
         # Update persistent listener profile (Slice One: context summariser).
         # Slice Two: also run saved-cast + feedback summarizers.
-        # Runs only when memory is enabled; must NOT block or fail generation.
-        try:
-            # Single-user guard: only the owner account updates the profile.
-            _owner_uid = await asyncio.get_event_loop().run_in_executor(
-                None, spotify_api.current_user_id
-            )
-            _profile = profile_store.load_profile()
-            if _profile.get("memory_enabled", True) and profile_store.claim_or_check_owner(_owner_uid):
-                _profile = profile_store.summarize_context(context, _profile)
-                _profile = profile_store.summarize_saved_casts(_profile)
-                _profile = profile_store.fold_feedback_into_profile(_profile)
-                profile_store.save_profile(_profile)
-        except Exception as _profile_exc:
-            logger.warning("Profile update failed (non-blocking): %s", _profile_exc)
+        # Skipped entirely for incognito casts (no writes).
+        # When memory_enabled is False, summarizers still update DURABLE fields
+        # but skip TRAIL fields.
+        # Must NOT block or fail generation.
+        if not job.incognito:
+            try:
+                # Single-user guard: only the owner account updates the profile.
+                _owner_uid = await asyncio.get_event_loop().run_in_executor(
+                    None, spotify_api.current_user_id
+                )
+                _profile = profile_store.load_profile()
+                _memory_enabled = _profile.get("memory_enabled", True)
+                if profile_store.claim_or_check_owner(_owner_uid):
+                    _profile = profile_store.summarize_context(
+                        context, _profile, memory_enabled=_memory_enabled
+                    )
+                    _profile = profile_store.summarize_saved_casts(
+                        _profile, memory_enabled=_memory_enabled
+                    )
+                    _profile = profile_store.fold_feedback_into_profile(_profile)
+                    profile_store.save_profile(_profile)
+            except Exception as _profile_exc:
+                logger.warning("Profile update failed (non-blocking): %s", _profile_exc)
 
         job.push("done", {"episode_id": episode_id, "episode_name": episode_name})
         job.status = "done"
