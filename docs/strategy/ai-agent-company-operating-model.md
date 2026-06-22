@@ -360,6 +360,31 @@ Current scoring position:
 
 ## Current Known Manager Notes
 
+### Manager Model Selection (budget, 2026-06-22)
+
+Boss direction: prefer a cheaper model for manager runs to control budget — target DeepSeek
+(`deepseek-v4-pro`).
+
+Finding (verified): DeepSeek is **not** in the Copilot CLI's built-in model routing —
+`--model deepseek-v4-pro` and all `deepseek*` variants return "not available." The only path is
+**BYOK (Bring Your Own Key)** via environment variables:
+
+- `COPILOT_PROVIDER_BASE_URL` = DeepSeek's OpenAI-compatible endpoint (e.g. `https://api.deepseek.com`)
+- `COPILOT_PROVIDER_TYPE` = `openai`
+- `COPILOT_PROVIDER_API_KEY` = the boss's DeepSeek API key
+- `COPILOT_MODEL` = the model name DeepSeek's API expects (confirm whether `deepseek-v4-pro` is a
+  valid API model; otherwise `deepseek-chat` / `deepseek-reasoner`)
+- optional `COPILOT_PROVIDER_MODEL_ID` = a well-known base id so tool-support/token-limit config applies.
+
+Boundaries:
+
+- The **boss must set the API key** — agents do not enter API keys.
+- BYOK replaces Copilot routing for that session; RUG's orchestration/tool-calling was tuned for
+  Copilot models, so **test DeepSeek on a small task before relying on it** for real implementation.
+- Once the env is configured, invoke RUG normally:
+  `copilot --agent rug-agentic-workflow:rug-orchestrator --allow-all -C <repo>` (the BYOK env vars
+  select the model).
+
 ### RUG Manager
 
 Observed strengths:

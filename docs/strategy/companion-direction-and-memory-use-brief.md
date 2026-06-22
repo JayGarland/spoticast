@@ -95,6 +95,31 @@ Chef assessment: I agree directionally, with caveats.
   memory injection must be **mode-aware** — a private taste profile must not leak into a cast the
   user broadcasts to friends. Decide §3 for personal mode first; design public mode separately.
 
+## 3.2 Memory control model — what does "memory off" mean? (boss-raised 2026-06-22)
+
+Today there is one boolean `memory_enabled`, and the privacy audit
+(`docs/handoffs/Companion Memory Use Privacy Audit Handoff.md`) shows it is both incomplete and
+ambiguous: "off" still injects the listener's Spotify top artists into the prompt, and "Clear
+memory" never deletes `feedback.jsonl` (cleared prefs resurrect on the next cast). Before fixing
+those, decide *what the control should mean.* The boss wants a consolidated model — degrees of
+memory-off, an Incognito mode, and the line between clearing *preferences* vs clearing *data trails.*
+
+Control surface to decide (not yet built):
+
+- **Personalize on/off** — should generation use the persistent profile AND the live
+  listener-profile (top artists etc.), or neither? Today's toggle covers only the former. Decide
+  whether "off" means *no personal data in the prompt at all.*
+- **Incognito (this cast only)** — generate one cast with no profile read AND no profile/feedback
+  write, leaving stored memory untouched. A session-level, non-destructive "don't remember this one."
+- **Clear preferences vs clear trails** — two different deletes: (a) reset learned
+  preferences/feedback (must also delete `feedback.jsonl`); (b) clear the taste profile/trails.
+  Decide whether "Clear memory" is one button or two — and that whatever ships actually clears
+  everything it claims.
+
+This model defines what the audit's disable/reset fixes (High + Med-High) must implement, so settle
+it before patching. Ties to §3.1 (a shared/public cast is effectively forced-Incognito for the
+private profile).
+
 ## 4. PRINCIPLE — collect data only with a plan to use it
 
 Boss direction: do **not** keep collecting all available personal data without a roadmap for
