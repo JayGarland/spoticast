@@ -9,6 +9,20 @@ Resonova is a **personal AI radio companion that should understand the listener 
 more they use it.** Every decision below must be checked against this baseline. The point of
 the memory layer is not data collection — it is a companion that grows with the user.
 
+## Locked Decisions (2026-06-22)
+
+- **Companion stance: Option B (taste-as-a-lens / semantic) now; Option C (bounded episodic) later
+  as an explicit experiment.** Hosts may acknowledge taste via *derived descriptors* ("leans to the
+  quiet end"), never the user's own artist-name *inventory* (descriptor-not-inventory, per the
+  privacy audit) and never cross-cast history. Requires a style-derivation source first (see §4 and
+  the style-source note). Locked after both quality passes (product review + privacy audit).
+- **Per-user isolation: enforce single-user now.** Lock the instance to the owner's Spotify
+  identity — do not auto-populate/merge a second connecting account. This addresses the audit's
+  Critical cross-user bleed before any second tester connects. Full per-user isolation (profile/
+  token keyed per Spotify id) is deferred as a manager task.
+- **Still open:** the memory-control model (§3.2); the disable/reset fixes (depend on §3.2); the
+  style-derivation implementation; field cleanup (deferred until the above settle).
+
 ## 1. Boss observation (2026-06-21): the cast doesn't reference the user
 
 The boss generated a new cast. The hosts did **not** mention anything about the user and did
