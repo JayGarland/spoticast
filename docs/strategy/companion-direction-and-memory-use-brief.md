@@ -145,6 +145,23 @@ Focus: companion experience, UX, the listener's felt experience.
 > X"). But do **not** over-correct into a timid, defensive, conservative style — the owner
 > dislikes that. Owner leans toward *tasteful* acknowledgment of the single listener.
 >
+> Read these files first (repo root `F:\GitHub\resonova`; you have full workspace access — read
+> the real files, don't rely on this summary):
+> - `docs/strategy/companion-direction-and-memory-use-brief.md` — this brief: baseline (§0) and the
+>   open decisions (§3 host awareness, §3.1 personal/public mode, §4 data-use, §5 wiki extension).
+> - `README.md` and `docs/strategy/v0.1-roadmap.md` — product baseline and roadmap.
+> - `docs/strategy/boss-profile.md` — owner preferences and working style.
+> - `docs/handoffs/Persistent Profile Spotify Trails Design Handoff.md` — memory architecture and
+>   the full list of signals; `docs/handoffs/Persistent Profile Slice One Handoff.md` and
+>   `docs/handoffs/Persistent Profile Slice Two Handoff.md` — what is actually built.
+> - `resonova/api/gemini.py` — `build_prompt`: the `LISTENER PROFILE` / `PERSISTENT MEMORY` blocks
+>   and the "never narrate the listener" guardrails (ground truth on how memory reaches the cast).
+> - `resonova/profile.py` — what is summarized/persisted into the profile (taste, prefs, feedback).
+> - `resonova/api/spotify.py` and `resonova/config.py` — the Spotify signals and OAuth scopes used.
+> - `resonova/web/index.html` and `resonova/web/player.js` — the Memory panel UI and connect-time
+>   consent copy.
+> - Live app, if running: `http://127.0.0.1:8765` — connect Spotify to see the real flow.
+>
 > Review and advise (do not implement; do not patch code):
 > 1. Where should the companion sit — (a) invisible steering only, (b) tasteful acknowledgment of
 >    the single listener, (c) direct companion — to feel warm and personal without creepiness?
@@ -172,6 +189,24 @@ Focus: independent challenge, privacy/creepiness risk, assumptions.
 > only steers invisibly). The owner wants *tasteful* acknowledgment but with a hard rule: **no
 > cross-cast memory bleed** (the ChatGPT failure mode), and **no timid/defensive over-correction.**
 > The owner also floats an optional public/broadcast mode for sharing casts.
+>
+> Read these files first (repo root `F:\GitHub\resonova`; you have full workspace access — verify
+> against the real files, don't trust this summary):
+> - `docs/strategy/companion-direction-and-memory-use-brief.md` — baseline (§0) and open decisions.
+> - `resonova/profile.py` — exactly what is summarized/persisted (taste, prefs, feedback fold);
+>   confirm whether any raw/episodic or private data is retained.
+> - `resonova/api/gemini.py` — `build_prompt`: how the profile is injected into the cast, the
+>   capping/gating, and the "never narrate the listener" guardrails.
+> - `resonova/server.py` — generation pipeline, the profile read/write hooks, and the
+>   `/api/profile`, `/api/profile/refresh`, `/api/feedback` routes (where data flows).
+> - `resonova/api/spotify.py` and `resonova/config.py` — the Spotify signals and OAuth scopes;
+>   confirm scopes are read-only and justified.
+> - `resonova/web/index.html` and `resonova/web/player.js` — the consent copy and Memory panel
+>   (inspect/edit/reset/disable controls).
+> - `docs/handoffs/Persistent Profile Slice Two Handoff.md` — the latest build's stated risks.
+> - For the wiki-connector question: `F:\wiki-system\subwikis\base-llm-wiki` — the owner's personal
+>   wiki structure (and siblings `me-llm-wiki`, `llm-wiki-resonova`).
+> - Live app, if running: `http://127.0.0.1:8765`.
 >
 > Audit independently (do not patch code; challenge our assumptions):
 > 1. Where is the real creepiness / privacy risk if hosts start acknowledging the listener? What
