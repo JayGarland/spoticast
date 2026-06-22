@@ -139,6 +139,32 @@ Boundary:
 - External auditor should not patch first unless explicitly assigned.
 - External auditor is especially useful for high-risk areas: mobile playback, Spotify SDK lifecycle, UX/design, architecture, product roadmap, and company process.
 
+### Quality Team — Combined Role (decided 2026-06-21)
+
+The internal auditor, investigator, and product reviewer are **one combined quality role** for
+now: `Internal Auditor / Investigator / Product Reviewer`. Do not split into separate hires yet —
+that adds staffing and coordination cost before we have the volume.
+
+Every quality brief must name a **primary mode**:
+
+- **Product Reviewer mode** — UX, product value, user journey, release trust, positioning mismatch.
+- **Investigator mode** — root cause, evidence trail, repro, logs, code/doc contradictions (within
+  quality review; does not replace `gem-orchestrator` diagnostic implementation-prep).
+- **Auditor mode** — gate completeness, risk ranking, whether work is acceptable, missing validation.
+
+Rules:
+
+- One primary mode per brief; the agent may still flag cross-mode findings.
+- The no-self-approval rule applies **across modes**: in Auditor mode the agent must not gate work
+  it itself produced or strongly recommended in a prior Investigator/Reviewer brief.
+
+Split into separate roles only if: product UX review and technical investigation conflict too
+often; one agent is strong at product judgment but weak at evidence/root cause (or vice versa);
+quality outputs pile up faster than chef can gate; release readiness becomes a recurring separate
+workload; or a single brief routinely needs two modes at once.
+
+The two sections below describe the responsibilities that map onto these modes.
+
 ### Internal Auditor / Quality Team
 
 Status: trialed; use carefully as inspect-only quality reviewer.
@@ -402,7 +428,7 @@ Current chef staffing note:
 - What conditions should trigger an agent review besides incidents and releases?
 - Should performance weights be numeric, tier-based, or both?
 - Should the chef maintain a running ledger after every manager task, and what exact record format should be used?
-- Should internal auditor and product reviewer remain one combined quality-team agent initially, or split later after the quality team is hired?
+- (Resolved 2026-06-21) Quality team stays one combined role — `Internal Auditor / Investigator / Product Reviewer` — with each brief naming a primary mode (Product Reviewer / Investigator / Auditor); split only on the listed triggers. See the "Quality Team — Combined Role" section.
 - Which CLI managers are currently easiest for chef to invoke directly without boss copy-paste?
 - Which backup chef candidates should be evaluated first when Codex budget is exceeded?
 

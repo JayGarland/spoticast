@@ -128,6 +128,14 @@ inspectable, and resettable like the rest of memory; how it interacts with the n
 
 ---
 
+## How to send these (combined quality role)
+
+These map to the combined `Internal Auditor / Investigator / Product Reviewer` role (one agent,
+mode-per-brief). Either run them as **two focused passes** (Appendix A, then Appendix B), or send
+**one brief with a primary mode named** — primary: Product Reviewer (A), secondary:
+Auditor/Investigator (B). Prefer two passes when you want each lens sharp; the one merged send
+(Appendix C) when you want a single round-trip.
+
 ## Appendix A — Prompt to paste to the PRODUCT REVIEWER
 
 Focus: companion experience, UX, the listener's felt experience.
@@ -222,3 +230,64 @@ Focus: independent challenge, privacy/creepiness risk, assumptions.
 >
 > Return severity-ranked findings, disagreements with our current direction, the highest-risk
 > items to resolve first, and what to park. Evidence over opinion.
+
+## Appendix C — Combined single-send brief (one role, primary mode named)
+
+Use this when you want one round-trip to the combined quality agent instead of two passes.
+Primary mode: Product Reviewer. Secondary mode: Auditor / Investigator.
+
+> Resonova is a personal AI radio companion. Baseline (do not lose it): it should understand the
+> listener better the more they use it — without feeling invasive. It collects two memory layers
+> (the user's activity inside Resonova: saved casts, replays, feedback; and the user's Spotify
+> activity: top/recent, recency-weighted saved library, followed artists) into one inspectable,
+> resettable profile, injected into the cast-generation prompt. Today the hosts never reference the
+> listener — memory only steers invisibly, and a test cast did not mention the user at all.
+>
+> Owner constraints: lean toward *tasteful* acknowledgment of the single listener; **no cross-cast
+> memory bleed** (the ChatGPT failure mode — durable taste profile, not episodic replay); and **no
+> timid/defensive over-correction.** Personal by default, with an optional public/broadcast mode
+> later. You are the combined Internal Auditor / Investigator / Product Reviewer.
+> **Primary mode: Product Reviewer. Secondary: Auditor/Investigator.** Lead with product judgment;
+> add risk/evidence findings where they matter.
+>
+> Read these files first (repo root `F:\GitHub\resonova`; full workspace access — read the real
+> files, don't rely on this summary):
+> - `docs/strategy/companion-direction-and-memory-use-brief.md` — baseline (§0) and open decisions.
+> - `README.md`, `docs/strategy/v0.1-roadmap.md`, `docs/strategy/boss-profile.md` — baseline,
+>   roadmap, owner preferences.
+> - `resonova/api/gemini.py` — `build_prompt`: profile injection, capping/gating, the "never
+>   narrate the listener" guardrails.
+> - `resonova/profile.py` — what is summarized/persisted (taste, prefs, feedback); confirm no
+>   raw/episodic/private data is retained.
+> - `resonova/server.py` — generation pipeline, profile hooks, `/api/profile`,
+>   `/api/profile/refresh`, `/api/feedback` routes.
+> - `resonova/api/spotify.py`, `resonova/config.py` — Spotify signals and OAuth scopes (read-only?).
+> - `resonova/web/index.html`, `resonova/web/player.js` — Memory panel and consent copy.
+> - `docs/handoffs/Persistent Profile Spotify Trails Design Handoff.md`,
+>   `docs/handoffs/Persistent Profile Slice One Handoff.md`,
+>   `docs/handoffs/Persistent Profile Slice Two Handoff.md` — architecture, signals, built state, risks.
+> - Wiki-connector question: `F:\wiki-system\subwikis\base-llm-wiki` (siblings `me-llm-wiki`,
+>   `llm-wiki-resonova`).
+> - Live app, if running: `http://127.0.0.1:8765`.
+>
+> Advise (do not implement; do not patch code):
+> Product Reviewer (primary):
+> 1. Where should the companion sit — (a) invisible steering, (b) tasteful acknowledgment of the
+>    single listener, (c) direct companion — to feel warm without creepiness? Recommend a stance
+>    with example host lines.
+> 2. How do hosts acknowledge *taste* without replaying *history*? Give do/don't examples that
+>    avoid the ChatGPT bleed yet aren't timid.
+> 3. For each memory signal, give a concrete way it should change the listener's experience; flag
+>    any signal with no good use (data-use roadmap, not hoarding).
+> 4. Personal-by-default vs an optional public/broadcast mode: credible? How should host framing
+>    and memory differ when a cast is shared vs private?
+> 5. Is a personal-wiki connector a worthwhile, safe customer extension?
+> Auditor / Investigator (secondary):
+> 6. Where is the real creepiness/privacy line, and how could private/episodic context leak across
+>    casts or into a shared cast? What guards (esp. mode-awareness) are needed?
+> 7. Are we collecting any signal we cannot justify, or retaining raw/private data we shouldn't?
+> 8. What must be tested on a real account/device before building more?
+>
+> Return: a recommended companion stance with examples (primary), a per-signal use roadmap,
+> severity-ranked risk findings (secondary), and what to park. Separate product-design from
+> implementation. State which mode each finding comes from.

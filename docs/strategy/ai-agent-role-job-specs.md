@@ -37,11 +37,21 @@ The boss is not a recruitable agent role. No agent should treat this document as
 
 Agents should read `docs/strategy/boss-profile.md` to understand the boss's authority, habits, and expectations before doing boss-facing, company-role, recruitment, manager, auditor, or chef-level work.
 
-## Job Spec: Internal Auditor / Product Reviewer
+## Job Spec: Internal Auditor / Investigator / Product Reviewer
 
-Status: recruiting.
+Status: recruiting. Decided 2026-06-21: one combined quality role, not three separate hires yet.
 
-Can initially be one combined quality-team agent.
+One combined quality-team agent. Every brief names a **primary mode**:
+
+- **Product Reviewer mode** — UX, product value, user journey, release trust, positioning.
+- **Investigator mode** — root cause, evidence trail, repro, logs, code/doc contradictions.
+- **Auditor mode** — gate completeness, risk ranking, acceptability, missing validation.
+
+One primary mode per brief; cross-mode findings allowed. The no-self-approval rule applies across
+modes (Auditor mode must not gate the agent's own prior Investigator/Reviewer output). Split into
+separate roles only if: product vs technical review conflict too often; the agent is strong in one
+but weak in the other; quality output outpaces chef gating; release readiness becomes a recurring
+separate workload; or a single brief routinely needs two modes at once.
 
 ### Mission
 
