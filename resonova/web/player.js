@@ -2416,9 +2416,9 @@ class ResonovaPlayer {
   _handlePlaylistClick(uri) {
     const input = document.getElementById('playlist-uri');
     input.value = uri;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
     input.focus();
-    // Auto-submit
-    document.getElementById('generate-form').requestSubmit();
+    input.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
   // ──────────────────────────────────────────────

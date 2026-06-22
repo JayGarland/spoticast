@@ -54,6 +54,7 @@ def _run_tests() -> None:
         _test_retry_after_formatting()
         _test_failed_episode_save(episodes)
         _test_generate_route_accepts_json_body()
+        _test_playlist_card_does_not_auto_generate()
         _test_cooldown_guard_in_server()
 
     print("All tests passed ✓")
@@ -465,6 +466,23 @@ def _test_generate_route_accepts_json_body():
         server_mod.spotify_api.get_current_token = original_get_current_token
 
     print("  generate_route_accepts_json_body ✓")
+
+
+def _test_playlist_card_does_not_auto_generate():
+    """Playlist cards should fill the form, not bypass language/options by auto-submit."""
+    import re
+
+    src = Path("resonova/web/player.js").read_text(encoding="utf-8")
+    match = re.search(r"_handlePlaylistClick\(uri\) \{(?P<body>.*?)\n  \}", src, re.S)
+    assert match, "_handlePlaylistClick must exist"
+    body = match.group("body")
+
+    assert "requestSubmit" not in body, (
+        "Playlist-card clicks must not auto-generate; user must be able to choose language/options"
+    )
+    assert "scrollIntoView" in body, "Playlist-card clicks should bring the form/options into view"
+
+    print("  playlist_card_does_not_auto_generate ✓")
 
 
 if __name__ == "__main__":
