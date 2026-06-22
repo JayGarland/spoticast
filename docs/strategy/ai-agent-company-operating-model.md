@@ -505,7 +505,7 @@ Model fallback domains to maintain:
 
 - Research model: keep a cheaper fallback for grounded/background research where quality loss is acceptable.
 - Script-writing model: keep at least one lower-cost text-generation option for drafts, experiments, and non-production tests.
-- TTS model: keep fallback or optional TTS providers/models because voice synthesis is a recurring cost driver and can block the whole generation flow.
+- TTS model: keep fallback or optional TTS providers/models because voice synthesis is a recurring cost driver and can block the whole generation flow. Current TTS options note: `docs/strategy/tts-model-options.md`.
 
 Current candidate options and preferences:
 
