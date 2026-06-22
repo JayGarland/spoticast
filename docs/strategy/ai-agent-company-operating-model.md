@@ -422,6 +422,16 @@ on DeepSeek, and its cache-stability technique is directly relevant to the deep-
 mode's cost problem (`deep-research-generation-mode-brief.md`). Evaluate with a small trial before
 routing real work — not yet adopted; RUG remains the primary manager.
 
+Decision (2026-06-22, chef): **stay on the GitHub Copilot CLI as the primary manager platform for
+now.** RUG already works there, the workflow is gated, and DeepSeek is already available via BYOK —
+so the budget goal is met today with zero migration. **Trial reasonix in parallel**, scoped to the
+workload where it wins (long-running / deep-research / high-volume), and evaluate three things before
+any switch: (1) the effort to port RUG-equivalent orchestration into reasonix's agent/tool model
+(TOML config + JSON-RPC MCP plugins, NOT Copilot's `vscode/*` tools — a re-implementation, not
+copy-paste), (2) orchestration quality vs RUG, (3) real cache savings on our actual workloads.
+Migrate or dual-run only on that evidence; do not switch a working, gated workflow to a nascent tool
+on enthusiasm.
+
 ### RUG Manager
 
 Observed strengths:
