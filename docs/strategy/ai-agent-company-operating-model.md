@@ -432,14 +432,28 @@ copy-paste), (2) orchestration quality vs RUG, (3) real cache savings on our act
 Migrate or dual-run only on that evidence; do not switch a working, gated workflow to a nascent tool
 on enthusiasm.
 
-Confirmed 2026-06-22: the Copilot CLI is **single-agent only** — its modes are
-interactive/plan/autopilot and there is no `runSubagent`/multi-agent capability in its flags or
-tools. RUG's SWE/QA subagents are a VS Code Copilot feature, so RUG-via-CLI implements directly
-(no internal decomposition or QA subagent). If true multi-agent manager orchestration is wanted,
-the candidates are **reasonix** (planner/executor split — addresses both multi-agent AND cache
-cost) and **Claude Code** (native subagents, already this chef's environment). For bounded tasks
-single-agent RUG is sufficient; multi-agent matters for large decomposition and the deep-research
-mode.
+CORRECTION 2026-06-22: an earlier note claimed the Copilot CLI is "single-agent only" — that is
+**WRONG / outdated.** The Copilot CLI **does support multi-agent**: `/fleet` (parallel subagent
+execution) and `/tasks` (manage subagent/shell tasks) are confirmed in the installed CLI, plus
+custom agents (`.github/agents/`, `~/.copilot/agents/`, `--agent`). Why RUG still ran single-agent:
+RUG's design uses VS Code Copilot's `agent/runSubagent` tool, which the CLI doesn't expose — but the
+CLI's own `/fleet` can run parallel subagents independently of RUG's mechanism.
+
+Maturity ranking for multi-agent CLI workflows (boss research, 2026-06-22):
+
+1. **Claude Code** — most complete agent teams / custom subagents (per-subagent context, tools,
+   permissions). Best for true multi-agent, but agent teams add coordination/token cost.
+2. **Codex CLI** — explicit parallel specialized subagents (research / implement / review).
+3. **Copilot CLI** — `/fleet` parallel subagents + custom agents; orchestration less mature/
+   controllable than Claude Code teams or Codex subagents.
+4. **reasonix** — DeepSeek planner/executor (low-cost, cache-stable); a main executor + optional
+   planner, not a full specialist team.
+5. **Antigravity CLI** — Gemini CLI's successor (Gemini CLI retired 2026-06-18 for individual
+   tiers); verify install/account/migration before relying on it.
+
+Budget reality (boss): Claude Code is best but running multi-agent on Claude is costly; for budget,
+reasonix (DeepSeek) or Copilot `/fleet` are cheaper. Decision unchanged for now: keep Copilot CLI as
+primary, explore `/fleet` and reasonix, revisit after the current build queue.
 
 ### RUG Manager
 
