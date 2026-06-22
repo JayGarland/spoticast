@@ -430,7 +430,7 @@ FEEDBACK_TAGS = frozenset([
     "wrong vibe", "good story", "good analysis",
 ])
 
-_FEEDBACK_FOLD_THRESHOLD = 3  # occurrences before folding into high-confidence preference
+_FEEDBACK_FOLD_THRESHOLD = 2  # occurrences before folding into high-confidence preference
 
 
 def append_feedback(event: dict) -> None:
