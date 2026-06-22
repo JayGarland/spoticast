@@ -180,7 +180,7 @@
           <div class="memory-actions">
             <label class="memory-toggle-label">
               <input type="checkbox" id="memory-enabled-toggle" checked>
-              <span>Memory enabled</span>
+              <span title="On: track your recent-listening trail. Off: pause the trail — your durable taste is still used.">Track my listening trail</span>
             </label>
             <button class="btn btn-ghost btn-sm" id="memory-close-btn" type="button">close</button>
             <button class="btn btn-ghost btn-sm memory-clear-action" id="memory-clear-action-btn" type="button">Clear memory</button>
@@ -200,6 +200,10 @@
             required
           ></textarea>
         </div>
+        <label class="incognito-toggle-label" title="One-off cast: uses no saved memory and records nothing. Your stored memory is left untouched.">
+          <input type="checkbox" id="generate-incognito">
+          <span>Incognito — don't use or save memory for this cast</span>
+        </label>
         <button class="btn btn-primary" type="submit" id="generate-btn">
           Generate Cast
         </button>

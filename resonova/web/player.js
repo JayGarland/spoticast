@@ -1327,6 +1327,9 @@ class ResonovaPlayer {
       this._showError('Paste a Spotify playlist link, URI, or a list of track URLs.');
       return;
     }
+    // Incognito: one-off cast that reads and writes no memory.
+    const _incognitoEl = document.getElementById('generate-incognito');
+    parsed.incognito = !!(_incognitoEl && _incognitoEl.checked);
 
     // Client-side quota cooldown guard — blocks immediate retries without a server round-trip
     try {
