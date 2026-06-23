@@ -62,6 +62,10 @@ def _run_tests() -> None:
         _test_replay_affinity_prompt_memory_controls()
         _test_incognito_prompt_omits_all()
         _test_summarizers_skip_trail_when_memory_disabled(profile_mod)
+        # Cast lenses tests
+        _test_cast_depth_deep_injects_directive()
+        _test_cast_vibe_witty_injects_tone()
+        _test_cast_lenses_default_unchanged()
 
     print("All profile tests passed ✓")
 
@@ -1028,6 +1032,58 @@ def _test_incognito_prompt_omits_all():
         "Replay affinity must not appear in incognito prompt"
     )
     print("  incognito_prompt_omits_all ✓")
+
+
+def _test_cast_depth_deep_injects_directive():
+    """cast_depth='deep' → prompt contains the DEPTH directive."""
+    from resonova.api.gemini import build_prompt
+
+    ctx = _make_minimal_context()
+    ctx["cast_depth"] = "deep"
+
+    prompt = build_prompt(ctx)
+
+    assert "DEPTH" in prompt, "deep cast_depth should inject DEPTH directive"
+    assert "go deeper" in prompt, "deep directive should contain 'go deeper'"
+    print("  cast_depth_deep_injects_directive ✓")
+
+
+def _test_cast_vibe_witty_injects_tone():
+    """cast_vibe='witty' → prompt contains the witty tone descriptor."""
+    from resonova.api.gemini import build_prompt
+
+    ctx = _make_minimal_context()
+    ctx["cast_vibe"] = "witty"
+
+    prompt = build_prompt(ctx)
+
+    assert "VIBE" in prompt, "cast_vibe should inject VIBE directive"
+    assert "playful, quick, dry-humored" in prompt, (
+        "witty vibe should contain the correct tone descriptor"
+    )
+    print("  cast_vibe_witty_injects_tone ✓")
+
+
+def _test_cast_lenses_default_unchanged():
+    """No cast_depth/cast_vibe and no profile → prompt is byte-identical."""
+    from resonova.api.gemini import build_prompt
+
+    ctx = _make_minimal_context()
+    prompt_no_lens = build_prompt(ctx)
+
+    # Same call again — assert identity
+    prompt_again = build_prompt(ctx)
+    assert prompt_no_lens == prompt_again, (
+        "Repeated call without lenses must produce identical prompt"
+    )
+    # Must NOT contain any lens directive marker
+    assert "CAST DIRECTIVES" not in prompt_no_lens, (
+        "No CAST DIRECTIVES block when no lenses are set"
+    )
+    assert "PACING" not in prompt_no_lens
+    assert "DEPTH" not in prompt_no_lens
+    assert "VIBE" not in prompt_no_lens
+    print("  cast_lenses_default_unchanged ✓")
 
 
 def _test_summarizers_skip_trail_when_memory_disabled(m):

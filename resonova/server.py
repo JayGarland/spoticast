@@ -59,6 +59,8 @@ class Job:
         self.track_uris: list[str] | None = None
         self.incognito: bool = False
         self.commentary_language: str | None = None
+        self.cast_depth: str | None = None
+        self.cast_vibe: str | None = None
         self.status: str = "pending"   # pending | running | done | error
         self.events: list[dict] = []
         self.queue: list[dict] | None = None
@@ -459,6 +461,8 @@ class GenerateRequest(BaseModel):
     track_uris: list[str] | None = None
     incognito: bool = False
     commentary_language: str | None = None
+    cast_depth: str | None = None
+    cast_vibe: str | None = None
 
 
 @app.post("/generate")
@@ -481,6 +485,12 @@ async def generate(req: GenerateRequest):
     job.incognito = req.incognito
     if req.commentary_language:
         job.commentary_language = req.commentary_language.strip()[:40] or None
+    _ALLOWED_DEPTHS = {"brief", "balanced", "deep"}
+    _ALLOWED_VIBES = {"warm", "witty", "analytical", "late_night", "chill"}
+    if req.cast_depth in _ALLOWED_DEPTHS:
+        job.cast_depth = req.cast_depth
+    if req.cast_vibe in _ALLOWED_VIBES:
+        job.cast_vibe = req.cast_vibe
     _jobs[job_id] = job
 
     # Run generation in background so we can stream progress
@@ -620,6 +630,10 @@ async def _run_generation(job: Job):
         context["incognito"] = job.incognito
         if job.commentary_language:
             context["commentary_language"] = job.commentary_language
+
+        # Cast lenses: analysis depth and host vibe (steering, not personal memory)
+        context["cast_depth"] = job.cast_depth
+        context["cast_vibe"] = job.cast_vibe
 
         # Attach profile to context for prompt injection (non-blocking; missing = omit block)
         # Omitted entirely for incognito casts (no personalization at all).

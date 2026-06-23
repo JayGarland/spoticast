@@ -1384,6 +1384,25 @@ class ResonovaPlayer {
       parsed.commentary_language = commentaryLanguage.slice(0, 40);
     }
 
+    // Cast lenses: analysis depth and host vibe
+    const _depthSelect = document.getElementById('cast-depth');
+    const depthVal = _depthSelect?.value || '';
+    if (depthVal) {
+      parsed.cast_depth = depthVal;
+    }
+
+    const _vibeSelect = document.getElementById('cast-vibe');
+    const vibeVal = _vibeSelect?.value || '';
+    if (vibeVal) {
+      parsed.cast_vibe = vibeVal;
+    }
+
+    // Persist last-selected lenses so they survive page refresh
+    try {
+      localStorage.setItem('resonova:cast-depth', depthVal);
+      localStorage.setItem('resonova:cast-vibe', vibeVal);
+    } catch (_) {}
+
     // Client-side quota cooldown guard — blocks immediate retries without a server round-trip
     try {
       const raw = localStorage.getItem('resonova:tts-cooldown');
@@ -3010,6 +3029,17 @@ document.addEventListener('DOMContentLoaded', () => {
       if (isCustom) languageCustom.focus();
     });
   }
+
+  // Restore last-selected cast lenses from localStorage
+  try {
+    const savedDepth = localStorage.getItem('resonova:cast-depth');
+    const depthSelect = document.getElementById('cast-depth');
+    if (savedDepth && depthSelect) depthSelect.value = savedDepth;
+
+    const savedVibe = localStorage.getItem('resonova:cast-vibe');
+    const vibeSelect = document.getElementById('cast-vibe');
+    if (savedVibe && vibeSelect) vibeSelect.value = savedVibe;
+  } catch (_) {}
 
   // Auto-resize textarea and allow pasting multi-line track lists
   const textarea = document.getElementById('playlist-uri');

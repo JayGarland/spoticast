@@ -215,6 +215,8 @@ def build_prompt(context: dict[str, Any]) -> str:
     persistent_profile: dict | None = context.get("persistent_profile")
     incognito: bool = context.get("incognito", False)
     commentary_language: str | None = context.get("commentary_language")
+    cast_depth: str | None = context.get("cast_depth")
+    cast_vibe: str | None = context.get("cast_vibe")
 
     has_lastfm = bool(lastfm_user)
 
@@ -365,7 +367,9 @@ def build_prompt(context: dict[str, Any]) -> str:
             mem_lines.append("Taste — followed artists: " + ", ".join(followed))
 
         prefs = persistent_profile.get("commentary_preferences", {})
-        if prefs.get("tone"):
+        # Per-cast vibe overrides the durable tone preference; emit tone only when
+        # not overridden so there is no conflict in the prompt.
+        if prefs.get("tone") and not cast_vibe:
             mem_lines.append("Preferred tone: " + ", ".join(prefs["tone"][:3]))
         if prefs.get("avoid"):
             mem_lines.append("HOST INSTRUCTION — avoid: " + "; ".join(prefs["avoid"][:4]))
@@ -415,11 +419,51 @@ def build_prompt(context: dict[str, Any]) -> str:
             "Keep artist names, song titles, album titles, and quoted proper nouns in their original form when natural.\n"
         )
 
+    # ── Cast lenses: analysis depth + host vibe ──────────────────────────────
+    _VIBE_MAP = {
+        "warm": "warm, generous, affectionate",
+        "witty": "playful, quick, dry-humored",
+        "analytical": "precise, analytical, detail-driven",
+        "late_night": "hushed, intimate, late-night-radio",
+        "chill": "relaxed, easygoing, unhurried",
+    }
+
+    lens_directives: list[str] = []
+
+    # Resolve effective depth: per-cast override → profile default → "balanced".
+    effective_depth = cast_depth
+    if effective_depth is None and persistent_profile:
+        effective_depth = persistent_profile.get("commentary_preferences", {}).get("depth", "balanced")
+    if effective_depth is None:
+        effective_depth = "balanced"
+
+    if effective_depth == "brief":
+        lens_directives.append(
+            "PACING — keep it tight: fewer tangents, shorter segments, get to the point faster."
+        )
+    elif effective_depth == "deep":
+        lens_directives.append(
+            "DEPTH — go deeper: more analysis, production detail, historical/era context, "
+            "and connections between tracks; take the time."
+        )
+    # "balanced" → no extra directive (keeps default byte-identical)
+
+    if cast_vibe and cast_vibe in _VIBE_MAP:
+        lens_directives.append(
+            f"VIBE — the hosts' tone should be: {_VIBE_MAP[cast_vibe]}."
+        )
+
+    lens_section = (
+        "\n═══ CAST DIRECTIVES ═══\n"
+        + "\n".join(lens_directives)
+        + "\n"
+    ) if lens_directives else ""
+
     return f"""Generate a rich, detailed podcast commentary script for this Spotify playlist.
 
 ═══ LISTENER PROFILE ═══
 {chr(10).join(listener_lines)}
-{persistent_memory_section}{language_section}
+{persistent_memory_section}{language_section}{lens_section}
 ═══ PLAYLIST OVERVIEW ═══
 {summary['total_tracks']} tracks | Avg energy: {summary['avg_energy']} | Avg valence: {summary['avg_valence']} | Avg tempo: {summary['avg_tempo']} BPM
 {summary['personal_favorites_count']} tracks are Spotify top tracks | {summary.get('lastfm_total_plays', 0)} total Last.fm plays across playlist
