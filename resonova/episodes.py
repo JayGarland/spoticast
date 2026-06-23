@@ -39,6 +39,7 @@ def save_episode(
     queue: list[dict],
     order_fingerprint: str | None = None,
     track_order_preview: list[str] | None = None,
+    tagline: str | None = None,
     status: str = "complete",
 ) -> None:
     """
@@ -46,6 +47,7 @@ def save_episode(
 
     order_fingerprint  — 8-char hash of the selected track URI order (playlist episodes only).
     track_order_preview — first few "Artist – Track" strings for UI distinction (optional).
+    tagline            — one-line evocative tagline for share UI (optional).
     status             — "complete" for finished episodes; "quota_failed" for partial saves.
     """
     _ensure_dir()
@@ -63,6 +65,8 @@ def save_episode(
         meta["order_fingerprint"] = order_fingerprint
     if track_order_preview is not None:
         meta["track_order_preview"] = track_order_preview
+    if tagline is not None:
+        meta["tagline"] = tagline
 
     path = _episode_dir(episode_id) / "episode.json"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -140,6 +144,7 @@ def _public_episode(meta: dict, include_queue: bool = False) -> dict:
         "created_at": meta["created_at"],
         "order_fingerprint": meta.get("order_fingerprint"),
         "track_order_preview": meta.get("track_order_preview"),
+        "tagline": meta.get("tagline"),
         "status": meta.get("status", "complete"),
     }
     if include_queue:

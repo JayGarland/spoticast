@@ -63,8 +63,87 @@ def _run_tests() -> None:
         _test_taste_bias_works(variety)
         _test_taste_still_varied(variety)
         _test_no_taste_unchanged(variety)
+        _test_episode_tagline_roundtrip(episodes)
+        _test_episode_tagline_backward_compat(episodes)
+        _test_parse_episode_identity_two_lines()
+        _test_parse_episode_identity_one_line()
 
     print("All tests passed ✓")
+
+
+def _test_episode_tagline_roundtrip(episodes):
+    """Save episode with tagline → list/get returns it."""
+    ep_id = "tagline-test-001"
+    queue = [{"type": "audio", "url": "/audio/ep/intro.mp3"}]
+    episodes.save_episode(
+        episode_id=ep_id,
+        name="Test Episode",
+        tagline="Late-night soul for the long drive home",
+        playlist_uri="spotify:playlist:tagtest",
+        playlist_name="Tag Test Playlist",
+        track_count=5,
+        queue=queue,
+    )
+    ep = episodes.get_episode(ep_id)
+    assert ep is not None
+    assert ep["tagline"] == "Late-night soul for the long drive home", f"Expected tagline, got {ep.get('tagline')}"
+
+    lst = episodes.list_episodes()
+    found = next((e for e in lst if e["id"] == ep_id), None)
+    assert found is not None
+    assert found["tagline"] == "Late-night soul for the long drive home", f"Listed tagline mismatch: {found.get('tagline')}"
+
+    episodes.delete_episode(ep_id)
+    print("  episode_tagline_roundtrip ✓")
+
+
+def _test_episode_tagline_backward_compat(episodes):
+    """Old episodes without tagline must still load with tagline=None."""
+    ep_id = "old-no-tagline"
+    ep_dir = episodes._EPISODES_DIR / ep_id
+    ep_dir.mkdir(parents=True, exist_ok=True)
+    old_meta = {
+        "id": ep_id,
+        "name": "Old No Tagline",
+        "playlist_uri": "spotify:playlist:old",
+        "playlist_name": "Old Playlist",
+        "track_count": 3,
+        "created_at": "2025-01-01T00:00:00+00:00",
+        "queue": [],
+    }
+    (ep_dir / "episode.json").write_text(json.dumps(old_meta))
+
+    lst = episodes.list_episodes()
+    found = next((e for e in lst if e["id"] == ep_id), None)
+    assert found is not None, "Old episode must appear in list"
+    assert found.get("tagline") is None, "tagline should be None for old episodes without it"
+
+    ep = episodes.get_episode(ep_id)
+    assert ep is not None
+    assert ep.get("tagline") is None, "tagline should be None via get_episode too"
+
+    episodes.delete_episode(ep_id)
+    print("  episode_tagline_backward_compat ✓")
+
+
+def _test_parse_episode_identity_two_lines():
+    """_parse_episode_identity splits two lines correctly."""
+    from resonova.api.gemini import _parse_episode_identity
+    result = _parse_episode_identity(
+        "Berlin Nights\nLate-night techno for the urban commute"
+    )
+    assert result["title"] == "Berlin Nights", f"Expected 'Berlin Nights', got {result['title']!r}"
+    assert result["tagline"] == "Late-night techno for the urban commute", f"Unexpected tagline: {result['tagline']!r}"
+    print("  parse_episode_identity_two_lines ✓")
+
+
+def _test_parse_episode_identity_one_line():
+    """_parse_episode_identity returns empty tagline when only one line."""
+    from resonova.api.gemini import _parse_episode_identity
+    result = _parse_episode_identity("Berlin Nights")
+    assert result["title"] == "Berlin Nights"
+    assert result["tagline"] == "", f"Expected empty tagline, got {result['tagline']!r}"
+    print("  parse_episode_identity_one_line ✓")
 
 
 def _test_fingerprint_stable():

@@ -73,6 +73,7 @@ class ResonovaPlayer {
     this._pendingUnlockItem = null; // Spotify segment deferred after hidden-page Spotify Connect failure
     this._activeGenerationId = null;
     this._activeGenerationName = '';
+    this._activeGenerationTagline = '';
     this._activeGenerationSource = '';
     this._generationSaveCheck = null;
 
@@ -1473,8 +1474,9 @@ class ResonovaPlayer {
     es.addEventListener('intro_ready', (e) => {
       // Stale-event guard: ignore if this stream is no longer the active generation
       if (jobId !== this._activeGenerationId) return;
-      const { url, episode_name } = JSON.parse(e.data);
+      const { url, episode_name, tagline } = JSON.parse(e.data);
       if (episode_name) this._activeGenerationName = episode_name;
+      if (tagline) this._activeGenerationTagline = tagline;
       this._markAllStepsDone();
       this._startPlayback([{ type: 'audio', url }]);
     });
@@ -2355,10 +2357,20 @@ class ResonovaPlayer {
       ? `<div class="ep-preview">${ep.track_order_preview.map(s => this._esc(s)).join(' · ')}</div>`
       : '';
 
+    const taglineHTML = ep.tagline
+      ? `<div class="episode-card-tagline">${this._esc(ep.tagline)}</div>`
+      : '';
+
+    const coverGradient = this._coverGradient(ep.order_fingerprint || ep.id);
+
     return `
       <div class="episode-card${isNew ? ' episode-card-new' : ''}" data-episode-id="${ep.id}">
+        <div class="episode-card-cover" style="background: ${coverGradient}">
+          <span class="episode-card-cover-title">${this._esc(ep.name)}</span>
+        </div>
         <div class="episode-card-main">
           <div class="episode-card-name">${this._esc(ep.name)}</div>
+          ${taglineHTML}
           <div class="episode-card-meta">
             ${this._esc(ep.playlist_name)} · ${ep.track_count} tracks · ${date} ${time}
             ${newBadge}${runBadge}${replayBadge}${quotaBadge}${genFailedBadge}${fingerprintBadge}
@@ -2367,6 +2379,7 @@ class ResonovaPlayer {
         </div>
         <div class="episode-card-actions" role="group" aria-label="Episode actions">
           <button class="ep-btn ep-btn-play" data-action="play" data-episode-id="${ep.id}" title="Play this episode">▶ Play</button>
+          <button class="ep-btn ep-btn-share" data-action="share" data-episode-id="${ep.id}" title="Share episode">↗</button>
           <button class="ep-btn ep-btn-rename" data-action="rename" data-episode-id="${ep.id}" title="Rename episode">✏</button>
           <button class="ep-btn ep-btn-delete" data-action="delete" data-episode-id="${ep.id}" title="Delete episode">🗑</button>
         </div>
@@ -2391,6 +2404,58 @@ class ResonovaPlayer {
     } catch (err) {
       this._showError('Rename failed: ' + err.message);
     }
+  }
+
+  _coverGradient(seed) {
+    // Deterministic CSS gradient from a string seed
+    let hash = 0;
+    for (let i = 0; i < (seed || '').length; i++) {
+      hash = ((hash << 5) - hash) + seed.charCodeAt(i);
+      hash |= 0;
+    }
+    const h1 = ((hash & 0x7f) * 3.6) % 360;
+    const h2 = ((hash >> 8) & 0x7f) * 3.6 % 360;
+    return `linear-gradient(135deg, hsl(${h1}, 50%, 25%) 0%, hsl(${h2}, 40%, 15%) 100%)`;
+  }
+
+  async _shareEpisode(episodeId) {
+    const card = document.querySelector(`.episode-card[data-episode-id="${episodeId}"]`);
+    if (!card) return;
+    const title = card.querySelector('.episode-card-name')?.textContent || 'Resonova Cast';
+    const taglineEl = card.querySelector('.episode-card-tagline');
+    const tagline = taglineEl ? taglineEl.textContent : '';
+    const metaEl = card.querySelector('.episode-card-meta');
+    const metaText = metaEl ? metaEl.textContent : '';
+    const trackMatch = metaText.match(/(\d+)\s+tracks/);
+    const playlistMatch = metaText.match(/^(.+?)\s+·/);
+    const playlistName = playlistMatch ? playlistMatch[1].trim() : '';
+    const trackCount = trackMatch ? trackMatch[1] : '';
+    let blurb = title;
+    if (tagline) blurb += ` — ${tagline}`;
+    if (playlistName || trackCount) {
+      blurb += ' ·';
+      if (playlistName) blurb += ` ${playlistName}`;
+      if (trackCount) blurb += ` · ${trackCount} tracks`;
+    }
+    try {
+      await navigator.clipboard.writeText(blurb);
+      this._showToast('Copied to clipboard ✓');
+    } catch {
+      this._showError('Could not copy to clipboard');
+    }
+  }
+
+  _showToast(msg) {
+    let toast = document.getElementById('resonova-toast');
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.id = 'resonova-toast';
+      document.body.appendChild(toast);
+    }
+    toast.textContent = msg;
+    toast.classList.add('visible');
+    clearTimeout(this._toastTimer);
+    this._toastTimer = setTimeout(() => toast.classList.remove('visible'), 2500);
   }
 
   async _deleteEpisode(episodeId) {
@@ -3073,6 +3138,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const action = actionBtn.dataset.action;
       const id = actionBtn.dataset.episodeId;
       if (action === 'play') resonova._playEpisode(id);
+      else if (action === 'share') resonova._shareEpisode(id);
       else if (action === 'rename') resonova._renameEpisode(id);
       else if (action === 'delete') resonova._deleteEpisode(id);
       return;

@@ -826,6 +826,37 @@ body::after {
   text-overflow: ellipsis;
 }
 
+.episode-card-tagline {
+  font-family: var(--font-sans);
+  font-size: 0.7rem;
+  font-style: italic;
+  color: var(--cream-mid);
+  margin-bottom: 0.3rem;
+  line-height: 1.3;
+}
+
+.episode-card-cover {
+  width: 48px;
+  height: 48px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.episode-card-cover-title {
+  font-family: var(--font-disp);
+  font-size: 0.5rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+  text-align: center;
+  line-height: 1.2;
+  padding: 0 0.25rem;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
 .episode-card-actions {
   display: flex;
   flex-direction: column;
@@ -858,10 +889,40 @@ body::after {
   background: rgba(192, 57, 43, 0.08);
 }
 
+.ep-btn-share:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(59, 255, 138, 0.08);
+}
+
 @media (max-width: 480px) {
   .episode-card-actions {
     flex-direction: row;
   }
+}
+
+/* ── Toast notification ── */
+#resonova-toast {
+  position: fixed;
+  bottom: 1.5rem;
+  left: 50%;
+  transform: translateX(-50%) translateY(1rem);
+  background: var(--panel);
+  border: 1px solid var(--accent-mid);
+  color: var(--cream);
+  font-family: var(--font-sans);
+  font-size: 0.8rem;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  pointer-events: none;
+  z-index: 1000;
+}
+
+#resonova-toast.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 
 /* ── Episode library accordion groups ── */

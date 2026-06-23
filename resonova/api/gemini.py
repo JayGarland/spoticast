@@ -480,12 +480,26 @@ Generate the complete podcast script including the outro. Make the per-track com
 """
 
 
-async def generate_episode_name(context: dict[str, Any]) -> str:
+def _parse_episode_identity(text: str) -> dict[str, str]:
+    """Parse a two-line response into a title/tagline dict.
+
+    Line 1 = title (2-5 words, no quotes).
+    Line 2 = tagline (one-line evocative sentence).
+    If only one line is present, tagline is empty string.
     """
-    Generate a short, evocative podcast episode title from the playlist context.
+    lines = [l.strip().strip("'\"") for l in text.strip().split("\n") if l.strip()]
+    title = lines[0] if lines else ""
+    tagline = lines[1] if len(lines) > 1 else ""
+    return {"title": title, "tagline": tagline}
+
+
+async def generate_episode_identity(context: dict[str, Any]) -> dict[str, str]:
+    """
+    Generate a podcast episode title and evocative tagline from the playlist context.
 
     Uses the research model (Flash) for speed — this is a lightweight creative task.
-    Returns a 2-5 word title, e.g. "Berlin Nights", "The Britpop Years".
+    Returns {"title": str, "tagline": str}.
+    Title is 2-5 words; tagline is a short evocative sentence (~6-12 words).
     """
     track_lines = [
         f"{t['name']} — {t['artist']}"
@@ -494,21 +508,21 @@ async def generate_episode_name(context: dict[str, Any]) -> str:
     playlist_name = context.get("playlist_name", "")
     commentary_language: str | None = context.get("commentary_language")
     language_requirement = (
-        f"- Write the title in {commentary_language}; keep artist names and proper nouns natural\n"
+        f"- Write the title and tagline in {commentary_language}; keep artist names and proper nouns natural\n"
         if commentary_language else ""
     )
 
     prompt = (
-        f"Generate a short podcast episode title for a music commentary show.\n"
+        f"Generate a podcast episode identity for a music commentary show.\n"
         f"Playlist: {playlist_name}\n"
         f"Tracks include:\n" + "\n".join(f"  - {l}" for l in track_lines) + "\n\n"
         "Requirements:\n"
-        "- 2–5 words maximum\n"
-        "- Evocative and specific — capture the mood, era, geography, or emotional thread\n"
-        "- Like a real episode title: 'Berlin Nights', 'Melancholy at Midnight', 'The Britpop Years'\n"
+        "- Output exactly TWO lines, nothing else\n"
+        "- Line 1: episode title, 2–5 words, no quotes, evocative and specific — capture the mood, era, geography, or emotional thread (like 'Berlin Nights', 'Melancholy at Midnight')\n"
+        "- Line 2: one-line evocative tagline, ~6–12 words, describing the musical mood or occasion (e.g. 'Late-night soul for the long drive home')\n"
+        "- The tagline describes the MUSIC, never addresses the listener directly\n"
         "- No quotes, no punctuation except hyphens\n"
         f"{language_requirement}"
-        "Output ONLY the title, nothing else."
     )
 
     client = _new_client()
@@ -516,7 +530,13 @@ async def generate_episode_name(context: dict[str, Any]) -> str:
         model=settings.gemini_research_model,
         contents=prompt,
     )
-    return response.text.strip().strip("\"'")
+    return _parse_episode_identity(response.text)
+
+
+async def generate_episode_name(context: dict[str, Any]) -> str:
+    """Thin wrapper around generate_episode_identity returning just the title."""
+    identity = await generate_episode_identity(context)
+    return identity["title"]
 
 
 async def generate_script(context: dict[str, Any]) -> dict:

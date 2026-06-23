@@ -665,10 +665,12 @@ async def _run_generation(job: Job):
             except Exception as _pe:
                 logger.warning("Could not load profile for prompt: %s", _pe)
 
-        script, episode_name = await asyncio.gather(
+        script, identity = await asyncio.gather(
             gemini_api.generate_script(context),
-            gemini_api.generate_episode_name(context),
+            gemini_api.generate_episode_identity(context),
         )
+        episode_name = identity["title"]
+        tagline = identity.get("tagline") or None
 
         job.push("progress", {"step": "tts", "message": "Synthesizing intro audio..."})
 
@@ -684,7 +686,7 @@ async def _run_generation(job: Job):
             None, audio_api.assemble_commentary, intro_pcm, intro_file
         )
         saved_queue.append({"type": "audio", "url": f"/audio/{intro_file}"})
-        job.push("intro_ready", {"url": f"/audio/{intro_file}", "episode_name": episode_name})
+        job.push("intro_ready", {"url": f"/audio/{intro_file}", "episode_name": episode_name, "tagline": tagline})
 
         # --- Synthesize per-track commentary, streaming each as it finishes ---
         for i, track_script in enumerate(script["tracks"]):
@@ -748,6 +750,7 @@ async def _run_generation(job: Job):
             queue=saved_queue,
             order_fingerprint=_order_fingerprint,
             track_order_preview=_track_order_preview,
+            tagline=tagline,
         )
 
         # Persist variety memory only after successful save (playlist episodes only)
@@ -799,6 +802,7 @@ async def _run_generation(job: Job):
                     queue=saved_queue,
                     order_fingerprint=_order_fingerprint,
                     track_order_preview=_track_order_preview,
+                    tagline=tagline,
                     status="quota_failed",
                 )
             except Exception as save_exc:
@@ -832,6 +836,7 @@ async def _run_generation(job: Job):
                     queue=saved_queue,
                     order_fingerprint=_order_fingerprint,
                     track_order_preview=_track_order_preview,
+                    tagline=tagline,
                     status="gen_failed",
                 )
             except Exception as save_exc:
