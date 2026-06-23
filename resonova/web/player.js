@@ -1182,10 +1182,27 @@ class ResonovaPlayer {
     const panel = document.getElementById('feedback-panel');
     if (!panel) return;
     this._episodeId = episodeId;
-    // Reset sent state
+    // Full state reset — _feedbackVerdict persists across episodes when not
+    // submitted; resetting here ensures the first thumb click always works.
+    this._feedbackVerdict = null;
+    this._feedbackTags = new Set();
+    document.getElementById('feedback-up-btn')?.classList.remove('feedback-thumb-active');
+    document.getElementById('feedback-down-btn')?.classList.remove('feedback-thumb-active');
+    const tagsDown = document.getElementById('feedback-tags-down');
+    const tagsUp = document.getElementById('feedback-tags-up');
+    if (tagsDown) {
+      tagsDown.style.display = 'none';
+      tagsDown.querySelectorAll('.feedback-tag').forEach(b => b.classList.remove('feedback-tag-active'));
+    }
+    if (tagsUp) {
+      tagsUp.style.display = 'none';
+      tagsUp.querySelectorAll('.feedback-tag').forEach(b => b.classList.remove('feedback-tag-active'));
+    }
+    const submitRow = document.getElementById('feedback-submit-row');
+    if (submitRow) submitRow.style.display = 'none';
     const sentMsg = document.getElementById('feedback-sent-msg');
-    const submitBtn = document.getElementById('feedback-submit-btn');
     if (sentMsg) sentMsg.style.display = 'none';
+    const submitBtn = document.getElementById('feedback-submit-btn');
     if (submitBtn) { submitBtn.style.display = ''; submitBtn.disabled = false; }
     panel.style.display = '';
   }
