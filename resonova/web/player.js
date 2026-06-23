@@ -76,6 +76,12 @@ class ResonovaPlayer {
     this._activeGenerationSource = '';
     this._generationSaveCheck = null;
 
+    // ── Replay tracking (saved-cast replays only) ──────────────────────────
+    this._replaySessionId = null;
+    this._replayMeaningfulSent = false;
+    this._replaySavedEpisodeId = null;
+    this._replayTotalSegments = 0;
+
     // ── Observability ring buffer (max 50 entries) ─────────────────────────
     this._obsTimeline = [];
     this._deviceGeneration = 0;
@@ -1533,6 +1539,11 @@ class ResonovaPlayer {
   // ──────────────────────────────────────────────
 
   _startPlayback(queue, options = {}) {
+    if (options.replayEpisodeId) {
+      this._beginReplayTracking(options.replayEpisodeId, queue.length);
+    } else {
+      this._clearReplayTracking();
+    }
     this.queue = [...queue];
     this.playedItems = [];
     this.playbackTimeline = options.timeline ? [...options.timeline] : [...queue];
@@ -1595,6 +1606,7 @@ class ResonovaPlayer {
     this._updateSkipButton();
     this._renderDiagnostics(null);
     this._saveResumeState();
+    this._maybeReportMeaningfulReplay();
 
     if (item.type === 'audio') {
       this._playAudio(item);
@@ -2031,6 +2043,7 @@ class ResonovaPlayer {
       this._parkIncompleteEpisode();
       return;
     }
+    this._maybeReportMeaningfulReplay();
     if (this._segmentDeadline) {
       clearTimeout(this._segmentDeadline);
       this._segmentDeadline = null;
@@ -2047,6 +2060,7 @@ class ResonovaPlayer {
     this._setMediaSessionPlaybackState('none');
     this._updateNowPlayingMiniPanel();
     this._updateSkipMusicButton();
+    this._clearReplayTracking();
   }
 
   // ──────────────────────────────────────────────
@@ -2303,6 +2317,10 @@ class ResonovaPlayer {
       ? `<span class="ep-fingerprint" title="Order fingerprint">${this._esc(ep.order_fingerprint)}</span>`
       : '';
 
+    const replayBadge = ep.replay_count > 0
+      ? `<span class="ep-run-badge">Replayed ${ep.replay_count}x</span>`
+      : '';
+
     const preview = ep.track_order_preview && ep.track_order_preview.length
       ? `<div class="ep-preview">${ep.track_order_preview.map(s => this._esc(s)).join(' · ')}</div>`
       : '';
@@ -2313,7 +2331,7 @@ class ResonovaPlayer {
           <div class="episode-card-name">${this._esc(ep.name)}</div>
           <div class="episode-card-meta">
             ${this._esc(ep.playlist_name)} · ${ep.track_count} tracks · ${date} ${time}
-            ${newBadge}${runBadge}${quotaBadge}${fingerprintBadge}
+            ${newBadge}${runBadge}${replayBadge}${quotaBadge}${fingerprintBadge}
           </div>
           ${preview}
         </div>
@@ -2364,13 +2382,13 @@ class ResonovaPlayer {
       try {
         localStorage.setItem(`resonova:episode:${episodeId}`, JSON.stringify({ ts: Date.now(), ep }));
       } catch { /* quota exceeded */ }
-      this._startPlayback(ep.queue);
+      this._startPlayback(ep.queue, { replayEpisodeId: episodeId });
     } catch (err) {
       try {
         const raw = localStorage.getItem(`resonova:episode:${episodeId}`);
         if (raw) {
           const cached = JSON.parse(raw);
-          this._startPlayback(cached.ep.queue);
+          this._startPlayback(cached.ep.queue, { replayEpisodeId: episodeId });
           return;
         }
       } catch { /* ignore */ }
@@ -2386,6 +2404,53 @@ class ResonovaPlayer {
       container.innerHTML = playlists.map(p => this._featuredCardHTML(p)).join('');
       document.getElementById('section-recent').classList.add('loaded');
     } catch (e) { console.warn('Failed to load recent plays:', e); }
+  }
+
+  _maybeReportMeaningfulReplay() {
+    if (!this._replaySessionId || this._replayMeaningfulSent) return;
+    if (!this._replaySavedEpisodeId) return;
+    const total = this._replayTotalSegments || this.totalItems;
+    if (total <= 0 || this.completedItems / total < 0.5) return;
+    this._replayMeaningfulSent = true;
+    const episodeId = this._replaySavedEpisodeId;
+    const sessionId = this._replaySessionId;
+    this._apiFetch(`/api/episodes/${episodeId}/replay`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        event: 'meaningful',
+        session_id: sessionId,
+        completed_segments: this.completedItems,
+        total_segments: total,
+      }),
+    }).catch(() => { /* non-blocking */ });
+  }
+
+  _beginReplayTracking(episodeId, totalSegments) {
+    const sessionId = (window.crypto && typeof window.crypto.randomUUID === 'function')
+      ? window.crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    this._replaySessionId = sessionId;
+    this._replayMeaningfulSent = false;
+    this._replaySavedEpisodeId = episodeId;
+    this._replayTotalSegments = totalSegments || 0;
+    this._apiFetch(`/api/episodes/${episodeId}/replay`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        event: 'start',
+        session_id: sessionId,
+        completed_segments: 0,
+        total_segments: this._replayTotalSegments,
+      }),
+    }).catch(() => { /* non-blocking */ });
+  }
+
+  _clearReplayTracking() {
+    this._replaySessionId = null;
+    this._replayMeaningfulSent = false;
+    this._replaySavedEpisodeId = null;
+    this._replayTotalSegments = 0;
   }
 
   async _loadPlaylists() {

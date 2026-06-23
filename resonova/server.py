@@ -321,6 +321,37 @@ async def api_delete_episode(episode_id: str):
     return JSONResponse({"deleted": True, "id": episode_id})
 
 
+class ReplayRequest(BaseModel):
+    event: str
+    session_id: str
+    completed_segments: int = 0
+    total_segments: int = 0
+
+
+@app.post("/api/episodes/{episode_id}/replay")
+async def api_replay_episode(episode_id: str, req: ReplayRequest):
+    """Record a replay start or meaningful-completion event for a saved episode."""
+    if req.event not in ("start", "meaningful"):
+        raise HTTPException(status_code=400, detail="event must be 'start' or 'meaningful'")
+    if not req.session_id:
+        raise HTTPException(status_code=400, detail="session_id is required")
+    if req.completed_segments < 0 or req.total_segments < 0:
+        raise HTTPException(status_code=400, detail="segment counts must be non-negative")
+    try:
+        result = episodes_store.record_replay_event(
+            episode_id,
+            req.event,
+            req.session_id,
+            req.completed_segments,
+            req.total_segments,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if result == "not_found":
+        raise HTTPException(status_code=404, detail="Episode not found")
+    return JSONResponse({"ok": True})
+
+
 @app.get("/api/profile")
 async def api_get_profile():
     """Return the current listener profile (memory layer)."""

@@ -56,6 +56,7 @@ def _empty_profile() -> dict:
             "playlist_patterns": [],
             "saved_library_artists": [],
             "followed_artists": [],
+            "replay_affinity": [],
         },
         "commentary_preferences": {
             "tone": [],
@@ -86,6 +87,9 @@ def load_profile() -> dict:
         for sub in ("saved_library_artists", "followed_artists"):
             if sub not in data.get("taste_profile", {}):
                 data["taste_profile"][sub] = []
+        # Forward-compat: replay affinity trail field
+        if "replay_affinity" not in data.get("taste_profile", {}):
+            data["taste_profile"]["replay_affinity"] = []
         return data
     except Exception:
         return _empty_profile()
@@ -159,7 +163,7 @@ def _enforce_caps(profile: dict) -> dict:
     taste = profile.get("taste_profile", {})
     for field in ("top_artists", "recurring_styles", "favorite_eras",
                   "recent_shifts", "playlist_patterns",
-                  "saved_library_artists", "followed_artists"):
+                  "saved_library_artists", "followed_artists", "replay_affinity"):
         if isinstance(taste.get(field), list):
             taste[field] = taste[field][:_MAX_LIST_ITEMS]
 
@@ -379,7 +383,7 @@ def summarize_saved_casts(profile: dict | None = None,
     taste = profile.setdefault("taste_profile", {
         "top_artists": [], "recurring_styles": [], "favorite_eras": [],
         "recent_shifts": [], "playlist_patterns": [],
-        "saved_library_artists": [], "followed_artists": [],
+        "saved_library_artists": [], "followed_artists": [], "replay_affinity": [],
     })
     sources = profile.setdefault("sources", {
         "spotify": {"connected": False, "scopes_used": [], "last_refreshed_at": None},
@@ -414,6 +418,32 @@ def summarize_saved_casts(profile: dict | None = None,
                 kept = [p for p in existing_patterns if not p.startswith(("frequently casts from", "cast from"))]
                 merged = list(dict.fromkeys(patterns + kept))
                 taste["playlist_patterns"] = merged[:_MAX_LIST_ITEMS]
+
+            # Replay-derived playlist affinity (TRAIL — memory-on only).
+            # Weight replayed playlists higher than merely generated ones.
+            replay_by_playlist: dict[str, int] = {}
+            for ep in eps:
+                rc = ep.get("replay_count", 0)
+                if rc > 0:
+                    pl_name = ep.get("playlist_name", "").strip()
+                    if pl_name and pl_name not in ("Custom tracks", ""):
+                        replay_by_playlist[pl_name] = replay_by_playlist.get(pl_name, 0) + rc
+
+            affinity_lines: list[str] = []
+            for pl_name, total_replays in sorted(replay_by_playlist.items(), key=lambda x: -x[1])[:5]:
+                affinity_lines.append(f"strong affinity with '{pl_name}' style")
+
+            if affinity_lines:
+                existing_affinity = taste.get("replay_affinity") or []
+                kept_affinity = [a for a in existing_affinity
+                                 if not a.startswith("strong affinity with")]
+                merged_affinity = list(dict.fromkeys(affinity_lines + kept_affinity))
+                taste["replay_affinity"] = merged_affinity[:_MAX_LIST_ITEMS]
+            else:
+                # Clear stale replay affinity if no replays exist
+                existing_affinity = taste.get("replay_affinity") or []
+                taste["replay_affinity"] = [a for a in existing_affinity
+                                             if not a.startswith("strong affinity with")]
 
     profile["profile_version"] = _PROFILE_VERSION
     return profile
@@ -604,7 +634,8 @@ def profile_has_content(profile: dict) -> bool:
         isinstance(taste.get(f), list) and taste[f]
         for f in ("top_artists", "recurring_styles", "favorite_eras",
                   "recent_shifts", "playlist_patterns",
-                  "saved_library_artists", "followed_artists")
+                  "saved_library_artists", "followed_artists",
+                  "replay_affinity")
     )
     has_prefs = any(
         isinstance(profile.get("commentary_preferences", {}).get(f), list)

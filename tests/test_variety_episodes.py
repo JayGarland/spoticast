@@ -48,6 +48,7 @@ def _run_tests() -> None:
         _test_episodes_lifecycle(episodes)
         _test_episodes_backward_compat(episodes)
         _test_run_number(episodes)
+        _test_replay_event_counts(episodes)
         _test_episode_path_traversal_rejected(episodes)
         _test_server_track_ready_metadata_shape()
         _test_quota_error_classification()
@@ -55,6 +56,7 @@ def _run_tests() -> None:
         _test_failed_episode_save(episodes)
         _test_generate_route_accepts_json_body()
         _test_playlist_card_quick_generate()
+        _test_replay_tracking_frontend_shape()
         _test_mobile_hidden_spotify_attempts_before_deferring()
         _test_cooldown_guard_in_server()
 
@@ -206,6 +208,8 @@ def _test_episodes_backward_compat(episodes):
     assert found.get("order_fingerprint") is None, "order_fingerprint should be None for old episodes"
     assert found.get("track_order_preview") is None, "track_order_preview should be None for old episodes"
     assert found["run_number"] >= 1, "run_number must be assigned"
+    assert found["replay_count"] == 0, "old episodes should default replay_count to 0"
+    assert found["replay_started_count"] == 0, "old episodes should default replay_started_count to 0"
     print("  episodes_backward_compat ✓")
 
 
@@ -245,6 +249,46 @@ def _test_run_number(episodes):
     other_ep = next(e for e in lst if e["id"] == "run-ep-other")
     assert other_ep["run_number"] == 1, "Different playlist → independent run number"
     print("  run_number ✓")
+
+
+def _test_replay_event_counts(episodes):
+    """Replay events should dedupe by session and count only meaningful listens."""
+    ep_id = "replay-ep-001"
+    episodes.save_episode(
+        episode_id=ep_id,
+        name="Replay Test",
+        playlist_uri="spotify:playlist:replay",
+        playlist_name="Replay Playlist",
+        track_count=4,
+        queue=[{"type": "audio", "url": "/audio/a.mp3"} for _ in range(10)],
+    )
+
+    assert episodes.record_replay_event(ep_id, "start", "session-a", 0, 10) is None
+    assert episodes.record_replay_event(ep_id, "start", "session-a", 0, 10) is None
+    listed = next(e for e in episodes.list_episodes() if e["id"] == ep_id)
+    assert listed["replay_started_count"] == 1, "start should dedupe per session"
+    assert listed["replay_count"] == 0, "start must not count as meaningful replay"
+
+    assert episodes.record_replay_event(ep_id, "meaningful", "session-a", 4, 10) is None
+    listed = next(e for e in episodes.list_episodes() if e["id"] == ep_id)
+    assert listed["replay_count"] == 0, "below 50% must not count"
+
+    assert episodes.record_replay_event(ep_id, "meaningful", "session-a", 5, 10) is None
+    assert episodes.record_replay_event(ep_id, "meaningful", "session-a", 8, 10) is None
+    ep = episodes.get_episode(ep_id)
+    assert ep["replay_count"] == 1, "meaningful replay should dedupe per session"
+    assert ep["last_replayed_at"], "meaningful replay should stamp last_replayed_at"
+    assert "_replay_sessions" not in ep, "public episode payload must not expose session ids"
+
+    try:
+        episodes.record_replay_event(ep_id, "bogus", "session-b", 0, 10)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("invalid replay event should raise ValueError")
+
+    assert episodes.record_replay_event("missing-episode", "start", "session-c", 0, 1) == "not_found"
+    print("  replay_event_counts ✓")
 
 
 def _test_episode_path_traversal_rejected(episodes):
@@ -485,6 +529,21 @@ def _test_playlist_card_quick_generate():
     )
 
     print("  playlist_card_quick_generate ✓")
+
+
+def _test_replay_tracking_frontend_shape():
+    """Saved-cast replay tracking should be opt-in and non-blocking in player.js."""
+    src = Path("resonova/web/player.js").read_text(encoding="utf-8")
+
+    assert "replayEpisodeId" in src, "saved-cast playback must opt in to replay tracking"
+    assert "_maybeReportMeaningfulReplay" in src, "frontend must report meaningful replay threshold"
+    assert "completedItems / total < 0.5" in src, "meaningful replay threshold must be 50%"
+    assert "event: 'start'" in src and "event: 'meaningful'" in src, (
+        "frontend must send both start and meaningful replay events"
+    )
+    assert "Replayed ${ep.replay_count}x" in src, "episode cards must render replay counts"
+
+    print("  replay_tracking_frontend_shape ✓")
 
 
 def _test_mobile_hidden_spotify_attempts_before_deferring():

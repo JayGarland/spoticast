@@ -47,6 +47,7 @@ def _run_tests() -> None:
         _test_summarize_library_followed_artists(profile_mod)
         _test_summarize_library_graceful_empty(profile_mod)
         _test_summarize_saved_casts_empty(profile_mod)
+        _test_summarize_saved_casts_replay_affinity(profile_mod)
         _test_feedback_append_and_load(profile_mod)
         _test_feedback_fold_threshold(profile_mod)
         _test_feedback_override_precedence(profile_mod)
@@ -58,6 +59,7 @@ def _run_tests() -> None:
         _test_reset_deletes_feedback(profile_mod)
         _test_memory_off_prompt_omits_trail()
         _test_memory_on_prompt_contains_both()
+        _test_replay_affinity_prompt_memory_controls()
         _test_incognito_prompt_omits_all()
         _test_summarizers_skip_trail_when_memory_disabled(profile_mod)
 
@@ -536,6 +538,55 @@ def _test_summarize_saved_casts_empty(m):
     print("  summarize_saved_casts_empty ✓")
 
 
+def _test_summarize_saved_casts_replay_affinity(m):
+    """Meaningful replay counts should become memory-on-only playlist affinity."""
+    import tempfile
+    from pathlib import Path
+    import resonova.episodes as episodes_mod
+
+    original_dir = episodes_mod._EPISODES_DIR
+    with tempfile.TemporaryDirectory() as tmp:
+        episodes_mod._EPISODES_DIR = Path(tmp) / "episodes"
+        try:
+            episodes_mod.save_episode(
+                episode_id="affinity-001",
+                name="Affinity One",
+                playlist_uri="spotify:playlist:affinity",
+                playlist_name="Late Night Focus",
+                track_count=5,
+                queue=[],
+            )
+            episodes_mod.save_episode(
+                episode_id="affinity-002",
+                name="Affinity Two",
+                playlist_uri="spotify:playlist:affinity",
+                playlist_name="Late Night Focus",
+                track_count=5,
+                queue=[],
+            )
+            episodes_mod.record_replay_event("affinity-001", "meaningful", "s1", 5, 10)
+            episodes_mod.record_replay_event("affinity-001", "meaningful", "s2", 6, 10)
+
+            p = m._empty_profile()
+            updated = m.summarize_saved_casts(p, memory_enabled=True)
+            affinity = updated["taste_profile"]["replay_affinity"]
+            assert any("Late Night Focus" in item for item in affinity), (
+                "memory-on replay counts should derive playlist affinity"
+            )
+            assert updated["sources"]["resonova"]["saved_cast_count"] == 2
+
+            p_off = m._empty_profile()
+            updated_off = m.summarize_saved_casts(p_off, memory_enabled=False)
+            assert updated_off["taste_profile"]["replay_affinity"] == [], (
+                "memory-off must not write replay-derived trail"
+            )
+            assert updated_off["sources"]["resonova"]["saved_cast_count"] == 2
+        finally:
+            episodes_mod._EPISODES_DIR = original_dir
+
+    print("  summarize_saved_casts_replay_affinity ✓")
+
+
 # ---------------------------------------------------------------------------
 # Slice Two: feedback channel
 # ---------------------------------------------------------------------------
@@ -848,6 +899,7 @@ def _test_memory_off_prompt_omits_trail():
             "playlist_patterns": ["frequently casts from 'X'"],  # TRAIL
             "saved_library_artists": ["LibArtist"],
             "followed_artists": ["FolArtist"],
+            "replay_affinity": ["strong affinity with 'Replay Mix' style"],  # TRAIL
         },
         "memories": [],
         "commentary_preferences": {"tone": [], "depth": "balanced", "avoid": [], "loved_patterns": []},
@@ -865,6 +917,9 @@ def _test_memory_off_prompt_omits_trail():
     )
     assert "frequently casts from" not in prompt, (
         "TRAIL playlist_patterns must NOT appear in memory-off prompt"
+    )
+    assert "Replay Mix" not in prompt, (
+        "TRAIL replay_affinity must NOT appear in memory-off prompt"
     )
     print("  memory_off_prompt_omits_trail ✓")
 
@@ -884,6 +939,7 @@ def _test_memory_on_prompt_contains_both():
             "playlist_patterns": ["frequently casts from 'Night'"],  # TRAIL
             "saved_library_artists": [],
             "followed_artists": [],
+            "replay_affinity": ["strong affinity with 'Night Drive' style"],
         },
         "memories": [],
         "commentary_preferences": {"tone": [], "depth": "balanced", "avoid": [], "loved_patterns": []},
@@ -892,7 +948,39 @@ def _test_memory_on_prompt_contains_both():
 
     assert "DurableMain" in prompt, "DURABLE fields must appear in memory-on prompt"
     assert "TrailShiftArtist" in prompt, "TRAIL fields must appear in memory-on prompt"
+    assert "Night Drive" in prompt, "replay affinity should appear in memory-on prompt"
     print("  memory_on_prompt_contains_both ✓")
+
+
+def _test_replay_affinity_prompt_memory_controls():
+    """Replay affinity should be private steering and still obey incognito."""
+    from resonova.api.gemini import build_prompt
+
+    ctx = _make_minimal_context()
+    ctx["persistent_profile"] = {
+        "memory_enabled": True,
+        "taste_profile": {
+            "top_artists": [],
+            "recurring_styles": [],
+            "favorite_eras": [],
+            "recent_shifts": [],
+            "playlist_patterns": [],
+            "saved_library_artists": [],
+            "followed_artists": [],
+            "replay_affinity": ["strong affinity with 'Rainy Window' style"],
+        },
+        "memories": [],
+        "commentary_preferences": {"tone": [], "depth": "balanced", "avoid": [], "loved_patterns": []},
+    }
+    prompt = build_prompt(ctx)
+    assert "Rainy Window" in prompt, "memory-on replay affinity should reach the prompt"
+    assert "you replayed" in prompt, "guardrail should forbid explicit replay callbacks"
+
+    ctx["incognito"] = True
+    incognito_prompt = build_prompt(ctx)
+    assert "Rainy Window" not in incognito_prompt, "incognito must suppress replay affinity"
+
+    print("  replay_affinity_prompt_memory_controls ✓")
 
 
 def _test_incognito_prompt_omits_all():
@@ -911,6 +999,7 @@ def _test_incognito_prompt_omits_all():
             "playlist_patterns": [],
             "saved_library_artists": [],
             "followed_artists": [],
+            "replay_affinity": ["strong affinity with 'Hidden Replay' style"],
         },
         "memories": [{"id": "m1", "text": "A memory", "source": "feedback",
                       "confidence": "high", "pinned": False,
@@ -934,6 +1023,9 @@ def _test_incognito_prompt_omits_all():
     )
     assert "TopArtist" not in prompt, (
         "Profile data must not appear in incognito prompt"
+    )
+    assert "Hidden Replay" not in prompt, (
+        "Replay affinity must not appear in incognito prompt"
     )
     print("  incognito_prompt_omits_all ✓")
 

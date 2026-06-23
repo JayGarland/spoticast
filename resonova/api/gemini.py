@@ -350,6 +350,12 @@ def build_prompt(context: dict[str, Any]) -> str:
             if recent_shifts:
                 mem_lines.append("Taste — current listening: " + ", ".join(recent_shifts))
 
+            # Replay-derived playlist affinity: private style steering only.
+            # Phrased as style signal so hosts can angle toward it without naming history.
+            replay_affinity = taste.get("replay_affinity", [])[:3]
+            if replay_affinity:
+                mem_lines.append("Taste — playlist affinity: " + "; ".join(replay_affinity))
+
         saved_lib = taste.get("saved_library_artists", [])[:5]
         if saved_lib:
             mem_lines.append("Taste — library regulars: " + ", ".join(saved_lib))
@@ -384,7 +390,8 @@ def build_prompt(context: dict[str, Any]) -> str:
             "ONLY where it genuinely fits THIS playlist's actual music. NEVER: address the listener "
             "directly (\"you\" / \"your\"); name the listener's own artists or tracks back at them "
             "(use abstract style/mood descriptors, never their inventory); reference anything from a "
-            "past session (\"last time\", \"you've been\", \"lately\") — every cast is fresh; or claim "
+            "past session (\"last time\", \"you've been\", \"lately\", \"you replayed\", "
+            "\"last cast\") — every cast is fresh; or claim "
             "a taste that contradicts what is actually playing. Keep it rare and natural — a passing "
             "nod, never the subject. Frame any nod as the hosts' own observation about the MUSIC "
             "(\"this set suits someone who…\") within their conversation with each other — never as "
