@@ -580,8 +580,7 @@ async def _run_generation(job: Job):
         if not job.incognito:
             try:
                 _prompt_profile = profile_store.load_profile()
-                if _prompt_profile.get("memory_enabled", True):
-                    context["persistent_profile"] = _prompt_profile
+                context["persistent_profile"] = _prompt_profile
             except Exception as _pe:
                 logger.warning("Could not load profile for prompt: %s", _pe)
 
