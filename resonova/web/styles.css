@@ -1824,6 +1824,48 @@ body::after {
   margin: 0 auto;
 }
 
+/* Regeneration confirmation overlay */
+.regeneration-confirm {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 6, 10, 0.85);
+  backdrop-filter: blur(4px);
+  z-index: 100;
+}
+
+.regeneration-confirm-body {
+  background: var(--bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 2rem;
+  max-width: 420px;
+  width: 90%;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.regeneration-confirm-text {
+  font-family: var(--font-disp);
+  font-size: 1.1rem;
+  color: var(--cream);
+  line-height: 1.5;
+  text-align: center;
+}
+
+.regeneration-confirm-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
+.regeneration-confirm-actions .btn {
+  min-width: 120px;
+}
+
 /* Error message */
 .error-msg {
   width: 100%;

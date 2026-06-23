@@ -247,6 +247,7 @@ def _script_cache_fingerprint(context: dict[str, Any]) -> str:
         "cast_depth": context.get("cast_depth"),
         "cast_vibe": context.get("cast_vibe"),
         "commentary_language": context.get("commentary_language"),
+        "prior_cast_count": context.get("prior_cast_count", 0),
         "persistent_profile": persistent_profile,
     }
     return json.dumps(cache_context, sort_keys=True, ensure_ascii=False, default=str)
@@ -263,6 +264,9 @@ def build_prompt(context: dict[str, Any]) -> str:
     commentary_language: str | None = context.get("commentary_language")
     cast_depth: str | None = context.get("cast_depth")
     cast_vibe: str | None = context.get("cast_vibe")
+    prior_cast_count: int = context.get("prior_cast_count", 0)
+    prior_cast_summary: str | None = context.get("prior_cast_summary")
+    prior_cast_replay_count: int = context.get("prior_cast_replay_count", 0)
 
     has_lastfm = bool(lastfm_user)
 
@@ -496,6 +500,36 @@ def build_prompt(context: dict[str, Any]) -> str:
         if _avg_e is not None else ""
     )
 
+    # ── Previous cast context ────────────────────────────────────────────────
+    prior_cast_section = ""
+    if prior_cast_count > 0 and prior_cast_summary:
+        if prior_cast_replay_count > 0:
+            continuation = (
+                f"The listener replayed this cast (engaged with \u226550% of segments). "
+                f"They found value in it \u2014 open a new angle, go further, do not repeat the same framing."
+            )
+        else:
+            continuation = (
+                f"It is unclear whether the listener fully engaged with the previous cast. "
+                f"Try a noticeably different approach: different entry points, different angle on the tracks."
+            )
+        prior_cast_section = (
+            f"\n\n## PREVIOUS CAST (episode {prior_cast_count} of this playlist)\n"
+            f"{prior_cast_summary}\n\n"
+            f"## CONTINUATION INSTRUCTION\n"
+            f"This is episode {prior_cast_count + 1} for this playlist. "
+            f"Build forward from the previous cast above. "
+            f"Do not repeat the same framing, entry points, or talking points. "
+            f"{continuation}\n"
+        )
+    elif prior_cast_count > 0:
+        prior_cast_section = (
+            f"\n\n## CONTINUATION INSTRUCTION\n"
+            f"This is episode {prior_cast_count + 1} for this playlist. "
+            f"The listener has heard a previous cast for this playlist. "
+            f"Vary your entry points, framing, and talking points \u2014 do not repeat.\n"
+        )
+
     return f"""Generate a rich, detailed podcast commentary script for this Spotify playlist.
 
 ═══ LISTENER PROFILE ═══
@@ -512,7 +546,7 @@ def build_prompt(context: dict[str, Any]) -> str:
 ═══ PLAYLIST TRACKS (episode order) ═══
 (Each track's commentary is a DJ intro that plays BEFORE its track. Track 1 has no previous track to reference. Tracks 2+ briefly acknowledge what just played, then introduce the upcoming track.)
 {track_section}
-
+{prior_cast_section}
 Generate the complete podcast script including the outro. Make the per-track commentary genuinely rich — 5-8 exchanges, 60-120 seconds when spoken. Use the research data above as concrete talking points, not just background.
 """
 

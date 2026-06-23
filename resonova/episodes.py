@@ -40,6 +40,7 @@ def save_episode(
     order_fingerprint: str | None = None,
     track_order_preview: list[str] | None = None,
     tagline: str | None = None,
+    prior_cast_summary: str | None = None,
     status: str = "complete",
 ) -> None:
     """
@@ -67,6 +68,8 @@ def save_episode(
         meta["track_order_preview"] = track_order_preview
     if tagline is not None:
         meta["tagline"] = tagline
+    if prior_cast_summary is not None:
+        meta["prior_cast_summary"] = prior_cast_summary
 
     path = _episode_dir(episode_id) / "episode.json"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -189,6 +192,44 @@ def list_episodes() -> list[dict]:
         ep["run_number"] = run_number_map.get(ep["id"], 1)
 
     return episodes
+
+
+def get_playlist_episode_count(playlist_uri: str) -> int:
+    """Return the number of saved (non-error) episodes for a given playlist URI."""
+    if not _EPISODES_DIR.exists():
+        return 0
+    count = 0
+    for ep_dir in _EPISODES_DIR.iterdir():
+        meta_path = ep_dir / "episode.json"
+        if not meta_path.exists():
+            continue
+        try:
+            meta = json.loads(meta_path.read_text())
+        except Exception:
+            continue
+        if meta.get("playlist_uri") == playlist_uri and meta.get("status") == "complete":
+            count += 1
+    return count
+
+
+def get_latest_playlist_episode(playlist_uri: str) -> dict | None:
+    """Return the most recently created complete episode for a playlist, or None."""
+    if not _EPISODES_DIR.exists():
+        return None
+    candidates = []
+    for ep_dir in _EPISODES_DIR.iterdir():
+        meta_path = ep_dir / "episode.json"
+        if not meta_path.exists():
+            continue
+        try:
+            meta = json.loads(meta_path.read_text())
+        except Exception:
+            continue
+        if meta.get("playlist_uri") == playlist_uri and meta.get("status") == "complete":
+            candidates.append(meta)
+    if not candidates:
+        return None
+    return max(candidates, key=lambda m: m["created_at"])
 
 
 def get_episode(episode_id: str) -> dict | None:

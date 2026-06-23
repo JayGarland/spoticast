@@ -1390,6 +1390,20 @@ class ResonovaPlayer {
       this._showState('generating');
       return;
     }
+    // Regeneration guard: confirm before generating a fresh episode for a playlist
+    // that already has saved episodes.
+    if (parsed.playlist_uri) {
+      const existingCount = (this._episodes || [])
+        .filter(ep => ep.playlist_uri === parsed.playlist_uri && ep.status === 'complete')
+        .length;
+      if (existingCount > 0) {
+        const label = existingCount === 1 ? 'cast' : 'casts';
+        const proceed = await this._confirmRegeneration(
+          `You already have ${existingCount} ${label} for this playlist. Generate a new episode?`
+        );
+        if (!proceed) return;
+      }
+    }
     // Incognito: one-off cast that reads and writes no memory.
     const _incognitoEl = document.getElementById('generate-incognito');
     parsed.incognito = !!(_incognitoEl && _incognitoEl.checked);
@@ -1471,6 +1485,30 @@ class ResonovaPlayer {
     }
 
     this._streamProgress(jobId);
+  }
+
+  _confirmRegeneration(text) {
+    return new Promise(resolve => {
+      const overlay = document.getElementById('regeneration-confirm');
+      const textEl = document.getElementById('regeneration-confirm-text');
+      const cancelBtn = document.getElementById('regeneration-cancel-btn');
+      const proceedBtn = document.getElementById('regeneration-proceed-btn');
+      if (!overlay || !textEl || !cancelBtn || !proceedBtn) {
+        resolve(true); // fallback: allow generation if elements missing
+        return;
+      }
+      textEl.textContent = text;
+      overlay.style.display = 'flex';
+      const cleanup = () => {
+        overlay.style.display = 'none';
+        cancelBtn.removeEventListener('click', onCancel);
+        proceedBtn.removeEventListener('click', onProceed);
+      };
+      const onCancel = () => { cleanup(); resolve(false); };
+      const onProceed = () => { cleanup(); resolve(true); };
+      cancelBtn.addEventListener('click', onCancel);
+      proceedBtn.addEventListener('click', onProceed);
+    });
   }
 
   _streamProgress(jobId) {

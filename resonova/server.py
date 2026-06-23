@@ -48,6 +48,44 @@ app.mount("/web", StaticFiles(directory=str(_WEB_DIR)), name="web")
 
 
 # ---------------------------------------------------------------------------
+# Cast summary extraction for prior-cast context injection
+# ---------------------------------------------------------------------------
+
+def _extract_cast_summary(script: dict, episode_name: str) -> str:
+    """
+    Build a lightweight text summary of a generated script for prior-cast injection.
+
+    Script schema: intro and each track's commentary are [{host, text}] arrays.
+    Extracts: episode title, intro opening sentence, first sentence of each track's
+    commentary (capped to 6 tracks). Hard-capped at 700 chars to keep the prompt lean.
+    """
+    def _join_turns(turns: object) -> str:
+        if not isinstance(turns, list):
+            return ""
+        return " ".join(t.get("text", "") for t in turns if isinstance(t, dict))
+
+    parts: list[str] = [f'Episode title: "{episode_name}"']
+
+    intro_text = _join_turns(script.get("intro") or []).strip()
+    if intro_text:
+        first_sentence = intro_text.split(".")[0].strip()
+        if first_sentence:
+            parts.append(f"Intro framing: {first_sentence}.")
+
+    for seg in (script.get("tracks") or [])[:6]:
+        if not isinstance(seg, dict):
+            continue
+        commentary = _join_turns(seg.get("commentary") or []).strip()
+        if commentary:
+            first = commentary.split(".")[0].strip()
+            label = seg.get("track_uri", "track")
+            if first:
+                parts.append(f"{label}: {first}.")
+
+    return " | ".join(parts)[:700]
+
+
+# ---------------------------------------------------------------------------
 # In-memory job state
 # ---------------------------------------------------------------------------
 
@@ -693,12 +731,25 @@ async def _run_generation(job: Job):
             except Exception as _pe:
                 logger.warning("Could not load profile for prompt: %s", _pe)
 
+        # Prior-cast context for cache-busting and prompt enrichment
+        _prior_count = episodes_store.get_playlist_episode_count(job.playlist_uri) if job.playlist_uri else 0
+        context["prior_cast_count"] = _prior_count
+        if _prior_count > 0 and job.playlist_uri:
+            _latest = episodes_store.get_latest_playlist_episode(job.playlist_uri)
+            if _latest:
+                if _latest.get("prior_cast_summary"):
+                    context["prior_cast_summary"] = _latest["prior_cast_summary"]
+                context["prior_cast_replay_count"] = _latest.get("replay_count", 0)
+
         script, identity = await asyncio.gather(
             gemini_api.generate_script(context),
             gemini_api.generate_episode_identity(context),
         )
         episode_name = identity["title"]
         tagline = identity.get("tagline") or None
+
+        # Extract cast summary for persisting with this episode (used by next generation)
+        _cast_summary = _extract_cast_summary(script, episode_name)
 
         job.push("progress", {"step": "tts", "message": "Synthesizing intro audio..."})
 
@@ -779,6 +830,7 @@ async def _run_generation(job: Job):
             order_fingerprint=_order_fingerprint,
             track_order_preview=_track_order_preview,
             tagline=tagline,
+            prior_cast_summary=_cast_summary,
         )
 
         # Persist variety memory only after successful save (playlist episodes only)
