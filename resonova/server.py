@@ -569,7 +569,22 @@ async def _run_generation(job: Job):
         features, user_ctx = await asyncio.gather(
             loop.run_in_executor(None, spotify_api.fetch_audio_features, track_uris),
             loop.run_in_executor(None, spotify_api.fetch_user_context),
+            return_exceptions=True,
         )
+
+        # Optional enrichment must NEVER abort generation.  Substitute safe
+        # empty values and log a warning when a fetch fails.
+        if isinstance(features, BaseException):
+            logger.warning("fetch_audio_features failed (%s) — continuing without audio analysis", features)
+            features = {}
+        if isinstance(user_ctx, BaseException):
+            logger.warning("fetch_user_context failed (%s) — continuing without personalization", user_ctx)
+            user_ctx = spotify_api.UserContext(
+                top_tracks_short=[], top_tracks_medium=[], top_tracks_long=[],
+                top_artists_short=[], top_artists_medium=[], top_artists_long=[],
+                recently_played=[], top_genres=[],
+            )
+            job.push("progress", {"step": "fetch", "message": "Personalization unavailable, continuing..."})
 
         job.push("progress", {"step": "context", "message": "Building listener profile..."})
 
@@ -767,5 +782,24 @@ async def _run_generation(job: Job):
     except Exception as exc:
         job.status = "error"
         job.error = str(exc)
+        # Graceful partial-save: if some audio was produced, persist a partial
+        # episode so the cast isn't orphaned with no episode.json.
+        if saved_queue:
+            try:
+                # episode_name / total_tracks are always set before TTS starts,
+                # which is when saved_queue becomes non-empty.
+                episodes_store.save_episode(
+                    episode_id=episode_id,
+                    name=episode_name,
+                    playlist_uri=job.playlist_uri,
+                    playlist_name=job.playlist_name,
+                    track_count=total_tracks,
+                    queue=saved_queue,
+                    order_fingerprint=_order_fingerprint,
+                    track_order_preview=_track_order_preview,
+                    status="gen_failed",
+                )
+            except Exception as save_exc:
+                logger.warning("Failed to save partial episode %s: %s", job.job_id, save_exc)
         job.push("error", {"message": _format_generation_error(exc)})
         logger.exception("Generation failed for job %s", job.job_id)

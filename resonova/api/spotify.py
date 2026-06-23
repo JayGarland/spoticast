@@ -60,7 +60,7 @@ def get_client() -> spotipy.Spotify:
         raise RuntimeError("Not authenticated — no cached token")
     if oauth.is_token_expired(token_info):
         token_info = oauth.refresh_access_token(token_info["refresh_token"])
-    _client = spotipy.Spotify(auth=token_info["access_token"])
+    _client = spotipy.Spotify(auth=token_info["access_token"], requests_timeout=15)
     return _client
 
 
@@ -198,71 +198,53 @@ def fetch_tracks(track_uris: list[str]) -> list[TrackInfo]:
 
 
 def fetch_audio_features(track_uris: list[str]) -> dict[str, AudioFeatures]:
-    sp = get_client()
-    features: dict[str, AudioFeatures] = {}
-    uncached: list[str] = []
-    for uri in track_uris:
-        if uri in _features_cache:
-            features[uri] = _features_cache[uri]
-        else:
-            uncached.append(uri)
-    # Batch-fetch uncached in groups of 100.
-    # The /audio-features endpoint is restricted for Dev Mode apps (returns 403)
-    # — degrade gracefully so the rest of the pipeline continues without it.
-    for i in range(0, len(uncached), 100):
-        batch = uncached[i:i + 100]
-        ids = [uri.split(":")[-1] for uri in batch]
-        try:
-            results = sp.audio_features(ids)
-        except Exception as exc:
-            import logging
-            logging.getLogger(__name__).warning(
-                "audio-features unavailable (%s) — continuing without audio analysis", exc
-            )
-            break
-        if not results:
-            continue
-        for feat in results:
-            if feat is None:
-                continue
-            uri = f"spotify:track:{feat['id']}"
-            af = AudioFeatures(
-                uri=uri,
-                energy=feat["energy"],
-                valence=feat["valence"],
-                danceability=feat["danceability"],
-                tempo=feat["tempo"],
-                key=feat["key"],
-                mode=feat["mode"],
-                acousticness=feat["acousticness"],
-                instrumentalness=feat["instrumentalness"],
-            )
-            _features_cache[uri] = af
-            features[uri] = af
-    return features
+    """Audio-features endpoint is deprecated (403 for Dev Mode apps) — skip network call.
+
+    Returns an empty dict. Downstream code already handles empty features gracefully.
+    """
+    return {}
 
 
 def fetch_user_context() -> UserContext:
+    """Best-effort personalization fetch.
+
+    Each Spotify sub-call is individually wrapped in try/except so a single
+    ReadTimeout or transient error yields [] for THAT signal instead of
+    aborting the entire fetch.  Returns a valid (possibly empty) UserContext.
+    """
+    import logging
+    _log = logging.getLogger(__name__)
     sp = get_client()
 
     def _top_tracks(term: str) -> list[str]:
-        r = sp.current_user_top_tracks(limit=50, time_range=term)
-        return [t["uri"] for t in r["items"]] if r else []
+        try:
+            r = sp.current_user_top_tracks(limit=50, time_range=term)
+            return [t["uri"] for t in r["items"]] if r else []
+        except Exception as exc:
+            _log.warning("top_tracks(%s) failed (%s) — returning []", term, exc)
+            return []
 
     def _top_artists(term: str) -> tuple[list[str], list[str]]:
-        r = sp.current_user_top_artists(limit=50, time_range=term)
-        if not r:
+        try:
+            r = sp.current_user_top_artists(limit=50, time_range=term)
+            if not r:
+                return [], []
+            names = [a["name"] for a in r["items"]]
+            all_genres: list[str] = []
+            for a in r["items"]:
+                all_genres.extend(a.get("genres") or [])
+            return names, all_genres
+        except Exception as exc:
+            _log.warning("top_artists(%s) failed (%s) — returning []", term, exc)
             return [], []
-        names = [a["name"] for a in r["items"]]
-        # Collect genres from each artist, then flatten
-        all_genres: list[str] = []
-        for a in r["items"]:
-            all_genres.extend(a.get("genres") or [])
-        return names, all_genres
 
     def _recent() -> list[str]:
-        r = sp.current_user_recently_played(limit=50)
-        return [item["track"]["uri"] for item in r["items"]] if r else []
+        try:
+            r = sp.current_user_recently_played(limit=50)
+            return [item["track"]["uri"] for item in r["items"]] if r else []
+        except Exception as exc:
+            _log.warning("recently_played failed (%s) — returning []", exc)
+            return []
 
     names_short, genres_short = _top_artists("short_term")
     names_medium, genres_medium = _top_artists("medium_term")

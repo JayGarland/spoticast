@@ -1528,6 +1528,13 @@ class ResonovaPlayer {
         this._showState('connected');
         this._showQuotaError(errData);
       } else {
+        // A partial episode may have been saved (status gen_failed) — refresh the
+        // library to surface it and clear the stuck "current generation" card.
+        this._episodesNeedRefresh = true;
+        this._pendingEpisodeFocusId = this._activeGenerationId || null;
+        this._activeGenerationId = null;
+        this._activeGenerationName = '';
+        this._activeGenerationSource = '';
         this._showState('connected');
         this._showError(errData.message || 'Generation failed.');
       }
@@ -2313,6 +2320,10 @@ class ResonovaPlayer {
       ? '<span class="ep-quota-badge">⚠ Incomplete</span>'
       : '';
 
+    const genFailedBadge = ep.status === 'gen_failed'
+      ? '<span class="ep-quota-badge">⚠ Incomplete</span>'
+      : '';
+
     const fingerprintBadge = ep.order_fingerprint
       ? `<span class="ep-fingerprint" title="Order fingerprint">${this._esc(ep.order_fingerprint)}</span>`
       : '';
@@ -2331,7 +2342,7 @@ class ResonovaPlayer {
           <div class="episode-card-name">${this._esc(ep.name)}</div>
           <div class="episode-card-meta">
             ${this._esc(ep.playlist_name)} · ${ep.track_count} tracks · ${date} ${time}
-            ${newBadge}${runBadge}${replayBadge}${quotaBadge}${fingerprintBadge}
+            ${newBadge}${runBadge}${replayBadge}${quotaBadge}${genFailedBadge}${fingerprintBadge}
           </div>
           ${preview}
         </div>
