@@ -18,6 +18,7 @@
   --cream-faint: rgba(240, 230, 211, 0.1);
   --font-disp: 'Cormorant Garamond', Georgia, serif;
   --font-mono: 'DM Mono', 'Courier New', monospace;
+  --font-sans: 'Outfit', 'Inter', -apple-system, sans-serif;
 }
 
 *,
@@ -893,7 +894,7 @@ body::after {
 .ep-btn-share:hover {
   border-color: var(--accent);
   color: var(--accent);
-  background: rgba(59, 255, 138, 0.08);
+  background: rgba(108, 99, 255, 0.08); /* var(--accent) at 8% opacity */
 }
 
 @media (max-width: 480px) {
@@ -908,7 +909,7 @@ body::after {
   bottom: 1.5rem;
   left: 50%;
   transform: translateX(-50%) translateY(1rem);
-  background: var(--panel);
+  background: rgba(10, 10, 15, 0.95);
   border: 1px solid var(--accent-mid);
   color: var(--cream);
   font-family: var(--font-sans);
