@@ -722,4 +722,7 @@ def _test_no_taste_unchanged(variety):
         "taste=None and no taste arg should produce identical output with same RNG seed"
     )
     print("  no_taste_unchanged ✓")
+
+
+if __name__ == "__main__":
     _run_tests()

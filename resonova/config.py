@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -48,13 +49,21 @@ class Settings(BaseSettings):
     # Set this when running behind a custom domain (e.g. resonova.app via Cloudflare Tunnel).
     # When set, auto-detection (ngrok, Tailscale host headers) is bypassed.
     # Example: REDIRECT_URI=https://resonova.app/auth/callback
-    redirect_uri_override: str | None = None
+    # REDIRECT_URI_OVERRIDE is kept as a backwards-compatible alias.
+    redirect_uri_override: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("REDIRECT_URI", "REDIRECT_URI_OVERRIDE"),
+    )
+
+    # When True, the default redirect_uri (and tunnel auto-detection) use https://.
+    use_https: bool = Field(default=False, validation_alias="USE_HTTPS")
 
     @property
     def redirect_uri(self) -> str:
         if self.redirect_uri_override:
             return self.redirect_uri_override
-        return f"http://{self.public_host}:{self.port}/auth/callback"
+        scheme = "https" if self.use_https else "http"
+        return f"{scheme}://{self.public_host}:{self.port}/auth/callback"
 
     @property
     def spotify_scopes(self) -> str:

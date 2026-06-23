@@ -209,8 +209,11 @@ async def serve_index():
 def _resolve_redirect_uri(request: Request) -> str:
     """Build the redirect_uri from the incoming request's Host header.
 
-    Tunnel auto-detection: when the incoming Host header indicates a known
-    tunnel provider, switch to HTTPS and drop the port — the tunnel handles
+    When REDIRECT_URI (redirect_uri_override) is explicitly configured, use it
+    directly — no Host-header detection needed.
+
+    Otherwise, tunnel auto-detection: when the incoming Host header indicates a
+    known tunnel provider, switch to HTTPS and drop the port — the tunnel handles
     TLS termination and forwards on the standard HTTPS port.
 
     Supported tunnels (no config change needed):
@@ -219,9 +222,15 @@ def _resolve_redirect_uri(request: Request) -> str:
 
     Falls back to the configured default (http://127.0.0.1:8765) for local dev.
     """
+    # Explicit override always wins — no Host-header guessing needed.
+    if settings.redirect_uri_override:
+        return settings.redirect_uri_override
+
     host = request.headers.get("host", "")
     _TUNNEL_SUFFIXES = (".ts.net", ".ngrok-free.app", ".ngrok.io", ".ngrok.app")
     if any(host.endswith(suffix) for suffix in _TUNNEL_SUFFIXES):
+        return f"https://{host}/auth/callback"
+    if settings.use_https:
         return f"https://{host}/auth/callback"
     return settings.redirect_uri
 
@@ -527,6 +536,15 @@ async def generate(req: GenerateRequest):
     return {"job_id": job_id}
 
 
+@app.get("/jobs/{job_id}/status")
+async def job_status(job_id: str):
+    """Lightweight polling endpoint — fallback when SSE stream is silent."""
+    job = _jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {"status": job.status, "error": job.error}
+
+
 @app.get("/jobs/{job_id}/stream")
 async def job_stream(job_id: str, request: Request):
     job = _jobs.get(job_id)
@@ -548,11 +566,14 @@ async def job_stream(job_id: str, request: Request):
             if job.status in ("done", "error"):
                 break
 
-            # Wait for new events (with timeout to allow disconnect checks)
+            # Wait for new events (with timeout to allow disconnect checks).
+            # Send an SSE comment as heartbeat so proxies/tunnels (Tailscale
+            # Funnel, Cloudflare Tunnel, etc.) don't buffer the stream into
+            # silence and break the connection.
             try:
-                await asyncio.wait_for(job.wait_for_event(), timeout=1.0)
+                await asyncio.wait_for(job.wait_for_event(), timeout=15.0)
             except asyncio.TimeoutError:
-                pass
+                yield {"comment": "heartbeat"}
 
     return EventSourceResponse(event_generator())
 

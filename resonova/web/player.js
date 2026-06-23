@@ -76,6 +76,8 @@ class ResonovaPlayer {
     this._activeGenerationTagline = '';
     this._activeGenerationSource = '';
     this._generationSaveCheck = null;
+    this._sseWatchdog = null;
+    this._lastSSEEventTime = 0;
     this._episodes = [];
 
     // ── Replay tracking (saved-cast replays only) ──────────────────────────
@@ -186,6 +188,14 @@ class ResonovaPlayer {
     this._updateNowPlayingMiniPanel();
   }
 
+  _recommendSpotifyReload(reason = '') {
+    this._spotifyReloadRecommended = true;
+    this._spotifyRecoveryFailed = true;
+    this._setNowPlaying('Spotify session stale', 'Reload player to reconnect Spotify');
+    this._obsRecord('recovery:reload-recommended', reason.slice(0, 80));
+    this._updateRecoveryControl();
+  }
+
   _waitForSpotifyDevice(timeoutMs) {
     if (this.deviceId) return Promise.resolve(this.deviceId);
     return new Promise(resolve => {
@@ -256,12 +266,14 @@ class ResonovaPlayer {
         console.warn('[Resonova] Spotify recovery failed:', err);
         this._spotifyRecoveryFailed = true;
         this._spotifyRecoveryFailureCount += 1;
-        if (this._spotifyRecoveryFailureCount >= 2) {
-          this._spotifyReloadRecommended = true;
-          this._setNowPlaying('Spotify session stale', 'Reload player to reconnect Spotify');
-          this._obsRecord('recovery:reload-recommended', String(this._spotifyRecoveryFailureCount));
+        const message = err?.message || '';
+        const connectInvisible = message.includes('not visible to Spotify Connect');
+        if (connectInvisible || this._spotifyRecoveryFailureCount >= 2) {
+          this._recommendSpotifyReload(
+            connectInvisible ? 'connect-device-invisible' : String(this._spotifyRecoveryFailureCount)
+          );
         }
-        this._obsRecord('recovery:fail', (err?.message || '').slice(0, 80));
+        this._obsRecord('recovery:fail', message.slice(0, 80));
         this._renderDiagnostics(null);
         return false;
       } finally {
@@ -286,7 +298,7 @@ class ResonovaPlayer {
       btn._wired = true;
     }
 
-    const isVisible = this._spotifyUnhealthy || this._spotifyRecoveryFailed;
+    const isVisible = this._spotifyUnhealthy || this._spotifyRecoveryFailed || this._spotifyReloadRecommended;
     btn.style.display = isVisible ? '' : 'none';
 
     if (this._spotifyRecovering) {
@@ -1372,6 +1384,12 @@ class ResonovaPlayer {
       this._showError('Paste a Spotify playlist link, URI, or a list of track URLs.');
       return;
     }
+    // Single-generation lock: navigate to the running cast instead of stacking a new one.
+    if (this._activeGenerationId && !this._generationComplete) {
+      this._pushHistoryState('generating');
+      this._showState('generating');
+      return;
+    }
     // Incognito: one-off cast that reads and writes no memory.
     const _incognitoEl = document.getElementById('generate-incognito');
     parsed.incognito = !!(_incognitoEl && _incognitoEl.checked);
@@ -1466,13 +1484,37 @@ class ResonovaPlayer {
 
     this._generationComplete = false;
 
+    // SSE silence watchdog: if no event arrives for 30s behind a proxy/tunnel
+    // that buffers SSE, fall back to polling /jobs/{id}/status.
+    this._clearSSEWatchdog();
+    this._lastSSEEventTime = Date.now();
+    this._sseWatchdog = setInterval(async () => {
+      if (this._generationComplete) { this._clearSSEWatchdog(); return; }
+      if (jobId !== this._activeGenerationId) { this._clearSSEWatchdog(); return; }
+      const silentMs = Date.now() - this._lastSSEEventTime;
+      if (silentMs < 30000) return;
+      // SSE has been silent too long — poll job status as fallback
+      try {
+        const statusRes = await this._apiFetch(`/jobs/${jobId}/status`);
+        if (statusRes.status === 'done') {
+          this._handleGenerationDone(jobId, es);
+        } else if (statusRes.status === 'error') {
+          this._handleGenerationError({ message: statusRes.error || 'Generation failed.' }, es);
+        }
+      } catch (_) { /* polling failed, will retry next interval */ }
+    }, 5000);
+
+    const _touchSSE = () => { this._lastSSEEventTime = Date.now(); };
+
     es.addEventListener('progress', (e) => {
+      _touchSSE();
       const { step, message } = JSON.parse(e.data);
       this._updateProgressStep(step, message);
     });
 
     // Intro is ready — start playback immediately with just the intro audio
     es.addEventListener('intro_ready', (e) => {
+      _touchSSE();
       // Stale-event guard: ignore if this stream is no longer the active generation
       if (jobId !== this._activeGenerationId) return;
       const { url, episode_name, tagline } = JSON.parse(e.data);
@@ -1484,6 +1526,7 @@ class ResonovaPlayer {
 
     // Each track's commentary arrives as it finishes — append to live queue
     es.addEventListener('track_ready', (e) => {
+      _touchSSE();
       const { commentary_url, track_uri, total, track_name, artist, duration_ms } = JSON.parse(e.data);
       const commentaryItem = { type: 'audio', url: commentary_url };
       const spotifyItem = { type: 'spotify', uri: track_uri };
@@ -1504,6 +1547,7 @@ class ResonovaPlayer {
 
     // Outro arrives after the last track — append to the live queue
     es.addEventListener('outro_ready', (e) => {
+      _touchSSE();
       const { url } = JSON.parse(e.data);
       const outroItem = { type: 'audio', url };
       this.queue.push(outroItem);
@@ -1517,49 +1561,17 @@ class ResonovaPlayer {
     });
 
     es.addEventListener('done', (e) => {
-      es.close();
+      _touchSSE();
       let doneData = {};
       try { doneData = JSON.parse(e.data || '{}'); } catch (_) { }
-      const episodeId = doneData.episode_id || null;
-      this._pendingEpisodeFocusId = episodeId;
-      this._episodesNeedRefresh = true;
-      this._generationComplete = true;
-      this._clearGenerationSaveCheck();
-      this._updateProgress();
-      this._updateSkipButton();
-      this._refreshEpisodesAfterGeneration(episodeId);
-      // Show feedback panel once generation is done
-      if (episodeId) this._showFeedbackPanel(episodeId);
+      this._handleGenerationDone(doneData.episode_id || null, es);
     });
 
     es.addEventListener('error', (e) => {
-      es.close();
-      this._clearGenerationSaveCheck();
-      this._generationComplete = true;
+      _touchSSE();
       let errData = {};
       try { errData = JSON.parse(e.data || '{}'); } catch (_) { }
-      const isQuota = errData.code === 'tts_quota_exhausted';
-      if (isQuota) {
-        // Keep the failed episode visible in the library
-        this._episodesNeedRefresh = true;
-        this._pendingEpisodeFocusId = this._activeGenerationId || null;
-        // Clear active generation card — the saved partial episode takes its place
-        this._activeGenerationId = null;
-        this._activeGenerationName = '';
-        this._activeGenerationSource = '';
-        this._showState('connected');
-        this._showQuotaError(errData);
-      } else {
-        // A partial episode may have been saved (status gen_failed) — refresh the
-        // library to surface it and clear the stuck "current generation" card.
-        this._episodesNeedRefresh = true;
-        this._pendingEpisodeFocusId = this._activeGenerationId || null;
-        this._activeGenerationId = null;
-        this._activeGenerationName = '';
-        this._activeGenerationSource = '';
-        this._showState('connected');
-        this._showError(errData.message || 'Generation failed.');
-      }
+      this._handleGenerationError(errData, es);
     });
   }
 
@@ -1852,8 +1864,13 @@ class ResonovaPlayer {
       console.error('Spotify play failed:', err);
       this._markSpotifyUnhealthy('playback_error', err.message || 'Direct play command failed');
       this._spotifyRecoveryFailed = true;
+      if (err.status >= 500) {
+        this._recommendSpotifyReload(`playback-${err.status}`);
+      }
       this._updateRecoveryControl();
-      this._setNowPlaying('(Spotify playback failed. Click Recover below.)', '');
+      if (!this._spotifyReloadRecommended) {
+        this._setNowPlaying('(Spotify playback failed. Click Recover below.)', '');
+      }
       document.getElementById('waveform').classList.remove('spotify-mode');
       document.getElementById('progress-fill').classList.remove('spotify-mode');
     }
@@ -2105,6 +2122,47 @@ class ResonovaPlayer {
     this._loadPlaylists();
   }
 
+  _closeGenerationStream(stream) {
+    if (stream) stream.close();
+    if (!stream || this._activeStream === stream) {
+      this._activeStream = null;
+    }
+  }
+
+  _handleGenerationDone(episodeId, stream) {
+    this._clearSSEWatchdog();
+    this._closeGenerationStream(stream);
+    this._pendingEpisodeFocusId = episodeId;
+    this._episodesNeedRefresh = true;
+    this._generationComplete = true;
+    this._clearGenerationSaveCheck();
+    this._updateProgress();
+    this._updateSkipButton();
+    this._refreshEpisodesAfterGeneration(episodeId);
+    if (episodeId) this._showFeedbackPanel(episodeId);
+  }
+
+  _handleGenerationError(errData = {}, stream) {
+    this._clearSSEWatchdog();
+    this._closeGenerationStream(stream);
+    this._clearGenerationSaveCheck();
+    this._generationComplete = true;
+
+    const episodeId = this._activeGenerationId || null;
+    this._episodesNeedRefresh = true;
+    this._pendingEpisodeFocusId = episodeId;
+    this._activeGenerationId = null;
+    this._activeGenerationName = '';
+    this._activeGenerationSource = '';
+    this._showState('connected');
+
+    if (errData.code === 'tts_quota_exhausted') {
+      this._showQuotaError(errData);
+    } else {
+      this._showError(errData.message || 'Generation failed.');
+    }
+  }
+
   async _refreshEpisodesAfterGeneration(episodeId) {
     const loadedFresh = await this._loadEpisodes({ focusEpisodeId: episodeId });
     if (loadedFresh) {
@@ -2153,6 +2211,12 @@ class ResonovaPlayer {
     if (!this._generationSaveCheck) return;
     clearInterval(this._generationSaveCheck);
     this._generationSaveCheck = null;
+  }
+
+  _clearSSEWatchdog() {
+    if (!this._sseWatchdog) return;
+    clearInterval(this._sseWatchdog);
+    this._sseWatchdog = null;
   }
 
   _refreshCurrentGenerationInLibrary() {
@@ -2312,6 +2376,7 @@ class ResonovaPlayer {
                 <div class="episode-card-meta">
                   ${this._esc(ep.source)} · ${this._esc(progress)}
                   <span class="ep-new-badge">${this._esc(ep.status)}</span>
+                  <span class="ep-new-badge">Open progress</span>
                 </div>
               </div>
             </div>
@@ -3162,6 +3227,13 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    const currentGenerationCard = e.target.closest('[data-current-generation-card]');
+    if (currentGenerationCard && resonova._activeGenerationId && !resonova._generationComplete) {
+      resonova._pushHistoryState('generating');
+      resonova._showState('generating');
+      return;
+    }
+
     const card = e.target.closest('.playlist-card');
     if (card) {
       resonova._handlePlaylistClick(card.dataset.uri);
@@ -3174,11 +3246,8 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   document.getElementById('back-from-generating-btn').addEventListener('click', () => {
-    // Close any active SSE stream — the generation won't be observed
-    if (resonova._activeStream) {
-      resonova._activeStream.close();
-      resonova._activeStream = null;
-    }
+    // Keep the active SSE stream open so the library card and completion state
+    // continue to update while generation runs in the background.
     resonova._showState('connected', { forceRefreshEpisodes: true });
   });
 
