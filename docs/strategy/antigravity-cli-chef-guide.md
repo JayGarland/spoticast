@@ -205,3 +205,26 @@ Chef 用 Antigravity CLI 做侦察/诊断/模型对比 → 形成 bounded brief
 - 平台：Windows x64
 - 安装路径：`C:\Users\Administrator\AppData\Local\agy\bin\agy.exe`
 - 状态：✅ 已安装可用
+
+## Windows 无头执行 — 已验证可用配方 (Chef, 2026-06-23)
+
+`agy --print` 确实可用于无头实现，但需同时满足以下 6 点（每点都曾是独立阻塞点，逐一踩坑得出）：
+
+1. **认证**：boss 需先交互登录一次（`agy --prompt-interactive "hi"`；无 `agy login` 命令，agent 无法代登）。用 `agy models` 能列出模型即已认证。
+2. **禁用 RUG whitelist hook**：`.agents/plugins/rug-agentic-workflow/hooks.json` 的 `rug-tool-whitelist` 必须 `enabled:false`（commit `08212f7`）。否则只允许 subagent 工具，而 Antigravity CLI 不支持 `invoke_subagent` → 写工具被全部 block，agent 瘫痪（有响应但不落盘）。
+3. **cwd 必须在 C: 盘**（scriptblock 内 `Set-Location C:\Users\Administrator`）：agy 1.0.10 的 transcript 走 Unix 风格路径 `/Users/Administrator/.gemini/antigravity-cli/brain/...`，按"当前盘根"解析；cwd 在 F: 会变 `F:\Users\...`（不存在）→ 静默 abort、零输出。
+4. **brief 用绝对路径**：agy 把任务文件相对路径按 cwd（现为 C:）解析，**不是** `--add-dir`，故必须给绝对 worktree 路径（`F:\GitHub\resonova\.claude\worktrees\...\resonova\web\styles.css`）。
+5. **用可用模型**：`Gemini 3.5 Flash (High/Medium)` 可用；**`Claude Sonnet 4.6 (Thinking)` 会卡死**（0 CPU、0 字节 log）——上文"模式 B"的 Claude 示例会卡，改用 Gemini。
+6. **同步跑完**：`Start-Job` + `Wait-Job -Timeout`，一次跑完。`Start-Job` 跨工具调用会随 shell 退出而死；harness `run_in_background` 包装不保留 C: cwd（→ transcript 卡死）。
+
+```powershell
+$job = Start-Job { Set-Location "C:\Users\Administrator"
+  & "C:\Users\Administrator\AppData\Local\agy\bin\agy.exe" --add-dir "<worktree>" `
+    --model "Gemini 3.5 Flash (High)" --print "<brief, 绝对路径>" `
+    --log-file "<log>" --print-timeout 420s --dangerously-skip-permissions }
+Wait-Job $job -Timeout 460; Receive-Job $job
+```
+
+**为什么不把 cwd 设成 workspace？** 因为 repo 在 F: 盘，而 agy 的 transcript bug 要求 cwd 在 home 所在的 C: 盘——两者跨盘冲突。故取 cwd=C: + 任务文件绝对路径。（若 repo 在 C: 盘，则可 cwd=workspace 且无需绝对路径；或预建 `F:\Users\Administrator\.gemini\...` 镜像目录让 cwd=workspace 也能写 transcript，但更脏。）
+
+`--dangerously-skip-permissions` 需 boss 显式授权（harness 禁止 agent 自行写入永久允许规则）。Gate 同其他 manager：读 diff + `node --check` + 浏览器加载。**已用此配方成功落地 `01faf28`（episode 卡片 polish）。** 总评：可用但繁琐、对配置敏感，定位为 Copilot+RUG（DeepSeek）的**补充**而非默认。
