@@ -1,13 +1,34 @@
 # Companion Direction & Memory-Use Discussion Brief
 
 Audience: Boss + Agents (product reviewer, auditor, chef, managers)
-Status: Open for multi-staff discussion. Records the boss's words on 2026-06-21. Not yet decided.
+Status: Superseded in part by the 2026-06-23 bounded personal music narrator pivot.
+Records the boss's words on 2026-06-21 and the shipped Stance-B baseline.
 
 ## 0. Baseline (do not forget)
 
 Resonova is a **personal AI radio companion that should understand the listener better the
 more they use it.** Every decision below must be checked against this baseline. The point of
 the memory layer is not data collection — it is a companion that grows with the user.
+
+## 0.1 Pivot Update (2026-06-23)
+
+Decision record: `docs/strategy/bounded-personal-music-narrator-pivot.md`.
+
+Boss and Chef aligned on a product-direction pivot after reading the boss-curated
+research in `docs/research/`: **Strict Stance B is the shipped safety baseline,
+not the final product soul.** The target direction is **bounded Stance C: a
+private music-memory narrator**.
+
+The updated distinction:
+
+- **Strict B = current safety baseline.** Third-person, descriptor-only taste
+  acknowledgment remains the shipped behavior.
+- **Bounded C = product direction.** Direct "you" and bounded music-domain
+  episodic callbacks may be used when grounded in the current playlist and
+  inspectable/resettable memory.
+- **Unbounded C = banned.** No cross-domain ChatGPT-style bleed, no unrelated
+  personal callbacks, no raw inventory recital, and no private memory in shared
+  or public casts.
 
 ## Locked Decisions (2026-06-22)
 
@@ -16,14 +37,19 @@ the memory layer is not data collection — it is a companion that grows with th
   quiet end"), never the user's own artist-name *inventory* (descriptor-not-inventory, per the
   privacy audit) and never cross-cast history. Requires a style-derivation source first (see §4 and
   the style-source note). Locked after both quality passes (product review + privacy audit).
+  **SUPERSEDED IN PART (2026-06-23):** this remains the shipped Stance-B baseline, but bounded
+  music-domain episodic narration is now accepted as the product direction rather than merely a
+  later optional experiment.
   **CHECKPOINT RESOLVED (2026-06-22):** Option B confirmed from four angles — the boss's lean, both
-  quality passes, the deep-research report (`docs/deep-research-report.md`), and a customer's
+  quality passes, the boss-curated research export
+  (`docs/research/AI Companion Personalization and Trust.md`), and a customer's
   jump-scare concern (hosts "turning to" the listener feels scary — that's stance C, which B avoids).
   Implemented in `gemini.py` with a **fourth-wall-preserving** guardrail: a rare, light, third-person,
   playlist-grounded taste nod framed as the hosts' own observation about the music — NEVER "you",
-  inventory, history, playlist-contradiction, or turning to the listener. C is rejected; A/B/C as
-  user-selectable modes parked (not built). Pending: boss listens to a real cast to confirm it feels
-  right.
+  inventory, history, playlist-contradiction, or turning to the listener. The old "C is rejected"
+  wording is superseded: **unbounded C is rejected; bounded C is the target direction.** A/B/C as
+  user-selectable modes remain not built. Pending: boss listens to real casts to calibrate how much
+  personal narration feels right.
 - **Per-user isolation: enforce single-user now.** Lock the instance to the owner's Spotify
   identity — do not auto-populate/merge a second connecting account. This addresses the audit's
   Critical cross-user bleed before any second tester connects. Full per-user isolation (profile/
@@ -84,10 +110,12 @@ context from previous chats into new reasoning, which felt intrusive and wrong. 
 **cautious about memory injection** — but must **NOT become defensive/conservative** like
 ChatGPT. The boss explicitly dislikes that timid style.
 
-Design implication (the sweet spot): inject a **durable taste/preference profile** (e.g. "leans
-ambient lately"), NOT an **episodic replay** of prior casts ("last time we discussed X"). Warm,
-taste-aware framing — never creepy session callbacks or stale context carried in uninvited. Each
-cast should stand on its own; memory tunes it, memory does not haunt it.
+Design implication at the time: inject a **durable taste/preference profile** (e.g. "leans
+ambient lately"), NOT an **unbounded episodic replay** of prior casts ("last time we discussed X"
+without a clear music-domain reason). Warm, taste-aware framing — never creepy session callbacks
+or stale context carried in uninvited. Updated 2026-06-23: bounded music-domain callbacks are
+allowed when they are playlist-grounded, inspectable/resettable, and valuable to the current cast.
+Memory may narrate the listener's relationship to the music; it must not haunt unrelated sessions.
 
 ### Chef assessment
 

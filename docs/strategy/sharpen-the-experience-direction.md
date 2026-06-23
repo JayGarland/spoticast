@@ -42,7 +42,8 @@ The boss then asked to **advance the product**. Three thrusts were on the table:
 ## v1 — Steerability Lenses (shipped `0210340`, 2026-06-23)
 
 Two **optional per-cast** generation options that steer *how the hosts discuss the music*
-(never *whether* they address the listener — the stance-B fourth wall is untouched):
+(at shipment time, never *whether* they address the listener — the stance-B fourth wall was
+untouched):
 
 - **Depth** — `Brief` / `Balanced` / `Deep Dive`. Wires the previously-unused
   `commentary_preferences.depth` into the prompt; per-cast value overrides the durable pref.
@@ -65,6 +66,16 @@ Design notes:
 - Stance-B / fourth-wall guardrail unchanged: lenses change host *style*, never break the
   fourth wall, recite inventory, or address the listener.
 - No new architecture; no hosting / accounts / billing / multi-user (all still parked).
+
+## Pivot Note (2026-06-23)
+
+The later decision record `bounded-personal-music-narrator-pivot.md` changes the product direction:
+strict Stance B is now the shipped safety baseline, while bounded Stance C is the product target.
+
+Do **not** reinterpret the shipped `Depth` lens retroactively. `Brief` / `Balanced` / `Deep Dive`
+still means analysis depth and pacing. Future work may add or integrate **personal narration
+depth** with the lens system, but it must preserve the current analysis-depth behavior and make
+memory exposure user-controllable.
 
 ## Next candidates within this thrust (not yet approved)
 
