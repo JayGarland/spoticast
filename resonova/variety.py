@@ -13,6 +13,14 @@ _VARIETY_DIR = Path("generated") / "variety"
 _MAX_RECENT = 5
 _NUM_CANDIDATES = 20
 
+# ── Taste-bias scoring constants (small vs. large +1000 repeat penalty) ──────
+# These are soft rewards that make taste-favoured orders more likely but never
+# lock the result — variety and non-repeat penalties still dominate.
+_OPENER_FAVORITE_REWARD = 8    # opener artist is in the listener's top affinity
+_OPENER_POPULAR_REWARD = 4     # opener track is popular (≥75th percentile)
+_AFFINITY_PER_TRACK = 1        # per track whose artist is in listener's affinity
+_AFFINITY_MAX_REWARD = 5       # cap so affinity can't overwhelm variety
+
 
 def _safe_playlist_key(playlist_uri: str) -> str:
     return hashlib.sha1(playlist_uri.encode()).hexdigest()
@@ -58,8 +66,16 @@ def _score_candidate(
     recent_closers: set[str],
     recently_used_uris: set[str],
     tracks_by_uri: dict[str, Any],
+    taste: dict | None = None,
+    popularity_threshold: int = 0,
 ) -> int:
-    """Lower score = better candidate."""
+    """Lower score = better candidate.
+
+    When *taste* is provided (with an ``artist_affinity`` set of lowercased
+    artist names), apply a soft reward for favouring the listener's known
+    artists — especially in the opener slot.  ``popularity_threshold`` is the
+    75th-percentile popularity for this playlist (0 means unused).
+    """
     score = 0
 
     if compute_fingerprint(candidate_uris) in recent_fingerprints:
@@ -85,6 +101,30 @@ def _score_candidate(
             elif t1.album == t2.album:
                 score += 2
 
+    # ── Soft taste bias (only when taste data is available) ──────────────
+    if taste is not None and candidate_uris:
+        artist_affinity: set[str] = taste.get("artist_affinity") or set()
+        if artist_affinity:
+            # Strong opener: favourite artist in slot 0
+            opener = tracks_by_uri.get(candidate_uris[0])
+            if opener:
+                opener_artist = opener.artist.lower().strip()
+                if opener_artist in artist_affinity:
+                    score -= _OPENER_FAVORITE_REWARD
+                elif popularity_threshold > 0 and opener.popularity >= popularity_threshold:
+                    score -= _OPENER_POPULAR_REWARD
+
+            # Light affinity reward per track, capped
+            affinity_count = 0
+            for uri in candidate_uris:
+                t = tracks_by_uri.get(uri)
+                if t and t.artist.lower().strip() in artist_affinity:
+                    affinity_count += 1
+                    if affinity_count <= _AFFINITY_MAX_REWARD:
+                        score -= _AFFINITY_PER_TRACK
+                    else:
+                        break
+
     return score
 
 
@@ -107,12 +147,17 @@ def select_tracks_for_episode(
     tracks: list[Any],
     playlist_uri: str,
     max_tracks: int,
+    taste: dict | None = None,
 ) -> list[Any]:
     """
     Return a memory-aware varied order of tracks for a playlist episode.
 
     Tracks must have .uri, .artist, .album attributes (SpotifyTrackInfo).
     Pasted track-list inputs bypass this function entirely (handled in server.py).
+
+    When *taste* is provided (with an ``artist_affinity`` set), apply a soft
+    bias toward the listener's known artists while preserving non-determinism
+    and variety.
     """
     if not tracks:
         return []
@@ -133,6 +178,15 @@ def select_tracks_for_episode(
     # Only penalise recently-used track sets when playlist is bigger than max_tracks
     penalise_used = len(all_uris) > max_tracks
 
+    # ── Popularity threshold for "open strong" (75th percentile) ──────────
+    popularity_threshold = 0
+    if taste is not None:
+        popularities = [t.popularity for t in tracks if hasattr(t, "popularity")]
+        if popularities:
+            popularities.sort()
+            idx = int(len(popularities) * 0.75)
+            popularity_threshold = popularities[min(idx, len(popularities) - 1)]
+
     best_candidate: list[str] | None = None
     best_score: float = float("inf")
 
@@ -148,11 +202,16 @@ def select_tracks_for_episode(
             recent_closers,
             recently_used_uris if penalise_used else set(),
             tracks_by_uri,
+            taste=taste,
+            popularity_threshold=popularity_threshold,
         )
         if score < best_score:
             best_score = score
             best_candidate = candidate
-        if score < 20:
+        # Preserve the original no-taste behaviour exactly: stop at the first
+        # "good enough" candidate. With a taste bias active, evaluate all
+        # candidates so the soft reward is compared fairly.
+        if taste is None and score < 20:
             break
 
     if best_candidate is None:

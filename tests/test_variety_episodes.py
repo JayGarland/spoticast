@@ -25,6 +25,7 @@ class FakeTrack:
     artist: str
     album: str
     name: str = ""
+    popularity: int = 50
 
 
 # ---------------------------------------------------------------------------
@@ -59,6 +60,9 @@ def _run_tests() -> None:
         _test_replay_tracking_frontend_shape()
         _test_mobile_hidden_spotify_attempts_before_deferring()
         _test_cooldown_guard_in_server()
+        _test_taste_bias_works(variety)
+        _test_taste_still_varied(variety)
+        _test_no_taste_unchanged(variety)
 
     print("All tests passed ✓")
 
@@ -560,5 +564,83 @@ def _test_mobile_hidden_spotify_attempts_before_deferring():
     print("  mobile_hidden_spotify_attempts_before_deferring ✓")
 
 
-if __name__ == "__main__":
+def _test_taste_bias_works(variety):
+    """With a taste bundle whose artist_affinity contains a specific artist,
+    that artist's track should open notably more often than without taste."""
+    # Create tracks with one distinctive artist to bias toward
+    fake_uri = "spotify:track:favorite"
+    tracks = [FakeTrack(f"spotify:track:{i}", f"Artist{i}", f"Album{i}", popularity=50) for i in range(12)]
+    tracks.append(FakeTrack(fake_uri, "FavoriteArtist", "FavAlbum", popularity=80))
+    # Total 13 tracks, max 8 — the fav artist track is one of many
+    playlist_uri = "spotify:playlist:taste_bias"
+    max_tracks = 8
+
+    taste = {"artist_affinity": {"favoriteartist"}}
+
+    # Run many times without taste
+    bias_count = 0
+    total_runs = 50
+    for _ in range(total_runs):
+        selected = variety.select_tracks_for_episode(tracks, playlist_uri, max_tracks)
+        if selected and selected[0].uri == fake_uri:
+            bias_count += 1
+    no_taste_count = bias_count
+
+    # Run many times with taste
+    bias_count = 0
+    for _ in range(total_runs):
+        selected = variety.select_tracks_for_episode(tracks, playlist_uri, max_tracks, taste=taste)
+        if selected and selected[0].uri == fake_uri:
+            bias_count += 1
+    taste_count = bias_count
+
+    # The taste-bias runs should open with FavoriteArtist notably more often
+    # (statistical, not every run).  With 20 random candidates and a small
+    # reward (-8), the effect is modest but measurable over 50 trials.
+    print(f"  taste_bias: no_taste={no_taste_count}/{total_runs}, taste={taste_count}/{total_runs}")
+    assert taste_count > no_taste_count, (
+        f"Expected taste to increase opener rate, got {taste_count} vs {no_taste_count}"
+    )
+    print("  taste_bias_works ✓")
+
+
+def _test_taste_still_varied(variety):
+    """Even with the same taste, order fingerprints must differ across runs."""
+    tracks = [FakeTrack(f"spotify:track:{i}", f"Artist{i}", f"Album{i}", popularity=50) for i in range(20)]
+    playlist_uri = "spotify:playlist:taste_varied"
+    max_tracks = 8
+    taste = {"artist_affinity": {"artist1", "artist3", "artist5"}}
+
+    seen_fingerprints = set()
+    for _ in range(30):
+        selected = variety.select_tracks_for_episode(tracks, playlist_uri, max_tracks, taste=taste)
+        fp = variety.compute_fingerprint([t.uri for t in selected])
+        seen_fingerprints.add(fp)
+
+    assert len(seen_fingerprints) > 1, (
+        f"Expected multiple distinct orders with taste bias, got only {len(seen_fingerprints)}"
+    )
+    print(f"  taste_still_varied: {len(seen_fingerprints)} distinct orders across 30 runs ✓")
+
+
+def _test_no_taste_unchanged(variety):
+    """With taste=None, the selection behaves exactly as before — same scoring."""
+    tracks = [FakeTrack(f"spotify:track:{i}", f"Artist{i % 4}", f"Album{i % 6}", popularity=50) for i in range(20)]
+    playlist_uri = "spotify:playlist:no_taste"
+    max_tracks = 8
+
+    # Seed the RNG so we get repeatable sequences
+    import random as rng_mod
+    rng_mod.seed(42)
+    selected_seeded = variety.select_tracks_for_episode(tracks, playlist_uri, max_tracks, taste=None)
+    seeded_order = [t.uri for t in selected_seeded]
+
+    rng_mod.seed(42)
+    selected_old = variety.select_tracks_for_episode(tracks, playlist_uri, max_tracks)
+    old_order = [t.uri for t in selected_old]
+
+    assert seeded_order == old_order, (
+        "taste=None and no taste arg should produce identical output with same RNG seed"
+    )
+    print("  no_taste_unchanged ✓")
     _run_tests()

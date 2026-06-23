@@ -144,8 +144,29 @@ def _set_tts_cooldown(retry_after_seconds: int | None, model: str | None = None)
 
 
 def _select_playlist_tracks_for_episode(tracks: list[Any], playlist_uri: str) -> list[Any]:
-    """Return a memory-aware varied episode order from a playlist."""
-    return variety_store.select_tracks_for_episode(tracks, playlist_uri, settings.max_tracks)
+    """Return a memory-aware varied episode order from a playlist.
+
+    When a durable taste profile exists, build an artist-affinity set and pass
+    it as a soft bias — the order remains non-deterministic but favours the
+    listener's known artists.
+    """
+    profile = profile_store.load_profile()
+    taste_profile = profile.get("taste_profile") or {}
+
+    artists: list[str] = []
+    artists.extend(taste_profile.get("top_artists") or [])
+    artists.extend(taste_profile.get("saved_library_artists") or [])
+    artists.extend(taste_profile.get("followed_artists") or [])
+
+    if artists:
+        artist_affinity = {a.lower().strip() for a in artists if a}
+        taste = {"artist_affinity": artist_affinity}
+    else:
+        taste = None  # No profile data → identical to today's behaviour
+
+    return variety_store.select_tracks_for_episode(
+        tracks, playlist_uri, settings.max_tracks, taste=taste,
+    )
 
 
 async def _auto_refresh_profile_on_connect() -> None:
