@@ -459,13 +459,22 @@ def build_prompt(context: dict[str, Any]) -> str:
         + "\n"
     ) if lens_directives else ""
 
+    # Acoustic averages exist only when audio-features are available. Spotify
+    # deprecated that endpoint (403), so they're usually None — omit the segment
+    # rather than feeding the model "Avg energy: None | Avg valence: None | ...".
+    _avg_e = summary.get("avg_energy")
+    overview_features = (
+        f" | Avg energy: {_avg_e} | Avg valence: {summary.get('avg_valence')} | Avg tempo: {summary.get('avg_tempo')} BPM"
+        if _avg_e is not None else ""
+    )
+
     return f"""Generate a rich, detailed podcast commentary script for this Spotify playlist.
 
 ═══ LISTENER PROFILE ═══
 {chr(10).join(listener_lines)}
 {persistent_memory_section}{language_section}{lens_section}
 ═══ PLAYLIST OVERVIEW ═══
-{summary['total_tracks']} tracks | Avg energy: {summary['avg_energy']} | Avg valence: {summary['avg_valence']} | Avg tempo: {summary['avg_tempo']} BPM
+{summary['total_tracks']} tracks{overview_features}
 {summary['personal_favorites_count']} tracks are Spotify top tracks | {summary.get('lastfm_total_plays', 0)} total Last.fm plays across playlist
 
 ═══ ARTIST PROFILES ═══
