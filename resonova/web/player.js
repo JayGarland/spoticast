@@ -1106,7 +1106,8 @@ class ResonovaPlayer {
     const panel = document.getElementById('feedback-panel');
     const upBtn = document.getElementById('feedback-up-btn');
     const downBtn = document.getElementById('feedback-down-btn');
-    const tagsEl = document.getElementById('feedback-tags');
+    const tagsDown = document.getElementById('feedback-tags-down');
+    const tagsUp = document.getElementById('feedback-tags-up');
     const submitRow = document.getElementById('feedback-submit-row');
     const submitBtn = document.getElementById('feedback-submit-btn');
     const sentMsg = document.getElementById('feedback-sent-msg');
@@ -1114,26 +1115,35 @@ class ResonovaPlayer {
     if (!panel) return;
 
     const setVerdict = (v) => {
+      if (this._feedbackVerdict === v) return;
+      // Clear tags from previous verdict before switching
+      this._feedbackTags = new Set();
+      tagsDown.querySelectorAll('.feedback-tag').forEach(b => b.classList.remove('feedback-tag-active'));
+      tagsUp.querySelectorAll('.feedback-tag').forEach(b => b.classList.remove('feedback-tag-active'));
+
       this._feedbackVerdict = v;
       upBtn.classList.toggle('feedback-thumb-active', v === 'up');
       downBtn.classList.toggle('feedback-thumb-active', v === 'down');
-      tagsEl.style.display = '';
+      tagsDown.style.display = v === 'down' ? '' : 'none';
+      tagsUp.style.display = v === 'up' ? '' : 'none';
       submitRow.style.display = '';
     };
 
     upBtn.addEventListener('click', () => setVerdict('up'));
     downBtn.addEventListener('click', () => setVerdict('down'));
 
-    tagsEl.querySelectorAll('.feedback-tag').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const tag = btn.dataset.tag;
-        if (this._feedbackTags.has(tag)) {
-          this._feedbackTags.delete(tag);
-          btn.classList.remove('feedback-tag-active');
-        } else {
-          this._feedbackTags.add(tag);
-          btn.classList.add('feedback-tag-active');
-        }
+    [tagsDown, tagsUp].forEach(container => {
+      container.querySelectorAll('.feedback-tag').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const tag = btn.dataset.tag;
+          if (this._feedbackTags.has(tag)) {
+            this._feedbackTags.delete(tag);
+            btn.classList.remove('feedback-tag-active');
+          } else {
+            this._feedbackTags.add(tag);
+            btn.classList.add('feedback-tag-active');
+          }
+        });
       });
     });
 
@@ -1157,7 +1167,10 @@ class ResonovaPlayer {
         this._feedbackTags = new Set();
         upBtn.classList.remove('feedback-thumb-active');
         downBtn.classList.remove('feedback-thumb-active');
-        tagsEl.querySelectorAll('.feedback-tag').forEach(b => b.classList.remove('feedback-tag-active'));
+        tagsDown.querySelectorAll('.feedback-tag').forEach(b => b.classList.remove('feedback-tag-active'));
+        tagsUp.querySelectorAll('.feedback-tag').forEach(b => b.classList.remove('feedback-tag-active'));
+        tagsDown.style.display = 'none';
+        tagsUp.style.display = 'none';
       } catch (e) {
         console.warn('Feedback submit failed:', e);
         submitBtn.disabled = false;

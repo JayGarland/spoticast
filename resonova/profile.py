@@ -456,8 +456,12 @@ def summarize_saved_casts(profile: dict | None = None,
 _FEEDBACK_PATH = _PROFILE_DIR / "feedback.jsonl"
 
 FEEDBACK_TAGS = frozenset([
+    # down tags
     "too long", "too shallow", "too generic",
-    "wrong vibe", "good story", "good analysis",
+    "wrong vibe", "too repetitive", "missed key tracks",
+    # up tags
+    "good story", "good analysis",
+    "great vibe", "perfect pacing", "great host energy",
 ])
 
 _FEEDBACK_FOLD_THRESHOLD = 2  # occurrences before folding into high-confidence preference
@@ -534,10 +538,15 @@ def fold_feedback_into_profile(profile: dict | None = None) -> dict:
         "too shallow": "shallow analysis",
         "too generic": "generic commentary",
         "wrong vibe": "wrong-vibe segments",
+        "too repetitive": "repetitive talking points",
+        "missed key tracks": "ignoring key tracks",
     }
     _TAG_TO_LOVED = {
         "good story": "storytelling segments",
         "good analysis": "deep analysis",
+        "great vibe": "strong vibe",
+        "perfect pacing": "well-paced commentary",
+        "great host energy": "lively host energy",
     }
 
     now_iso = datetime.now(timezone.utc).isoformat()
