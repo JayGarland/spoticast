@@ -28,6 +28,37 @@ _MAX_LIST_ITEMS = 20
 # Confidence score: lower number = higher value (kept first when evicting)
 _CONFIDENCE_RANK: dict[str, int] = {"high": 0, "medium": 1, "low": 2}
 
+# Genre/style vocabulary for extracting recurring styles from song research text.
+# Fallback when Last.fm tags are absent and Spotify genres are sparse.
+_GENRE_VOCAB: frozenset[str] = frozenset([
+    # Core indie / alternative
+    "indie rock", "indie pop", "indie folk", "alternative rock", "alternative",
+    "dream pop", "shoegaze", "post-rock", "lo-fi", "noise rock",
+    "folk", "singer-songwriter", "acoustic", "folk rock",
+    "art rock", "experimental rock", "art pop",
+    "chamber pop", "baroque pop", "psychedelic rock", "psychedelia",
+    # Pop / electronic
+    "pop", "pop rock", "power pop", "synth-pop", "electropop", "dance pop",
+    "electronic", "electronica", "ambient", "synthwave", "chillwave",
+    "dance", "house", "techno", "trip-hop",
+    # Hip-hop / soul / R&B
+    "hip-hop", "hip hop", "rap", "r&b", "soul", "funk", "neo-soul",
+    # Jazz / blues / classical
+    "jazz", "blues", "jazz pop", "classical", "orchestral", "neoclassical",
+    # Rock variants
+    "rock", "heavy metal", "metal", "punk", "post-punk", "new wave", "grunge",
+    # Country / roots
+    "country", "bluegrass", "americana",
+    # East Asian pop
+    "mandopop", "c-pop", "j-pop", "k-pop", "cantopop",
+    "chinese pop", "chinese rock", "taiwanese pop", "chinese indie",
+    # French / Francophone
+    "chanson", "chanson française", "pop française", "variété",
+    "french pop", "french rock", "french indie",
+    # Latin / world
+    "bossa nova", "samba", "latin", "afrobeat", "world music",
+])
+
 
 # ---------------------------------------------------------------------------
 # Schema helpers
@@ -177,6 +208,29 @@ def _enforce_caps(profile: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Genre extraction helper
+# ---------------------------------------------------------------------------
+
+def _extract_genre_terms(tracks: list[dict]) -> list[str]:
+    """Scan song research texts for known genre/style vocabulary.
+
+    Returns terms ranked by frequency of occurrence across all tracks.
+    Used as a fallback style source when Last.fm tags are absent.
+    """
+    if not tracks:
+        return []
+    combined = " ".join(t.get("song_research", "") for t in tracks).lower()
+    if not combined.strip():
+        return []
+    counts: dict[str, int] = {}
+    for term in _GENRE_VOCAB:
+        n = combined.count(term)
+        if n > 0:
+            counts[term] = n
+    return [t for t, _ in sorted(counts.items(), key=lambda x: -x[1])]
+
+
+# ---------------------------------------------------------------------------
 # Context summariser (Slice One: Spotify context + Last.fm enrichment only)
 # ---------------------------------------------------------------------------
 
@@ -232,10 +286,15 @@ def summarize_context(context: dict[str, Any], profile: dict | None = None,
     # ── Recurring styles from Spotify genres ──────────────────────────────────
     spotify_genres: list[str] = list(listener.get("spotify_genres") or [])
 
-    # Merge: Last.fm tags first (preserving frequency order), then Spotify genres,
-    # de-duplicated (preserving first occurrence order), capped.
+    # ── Recurring styles from song research text ───────────────────────────────
+    # Fallback when Last.fm is not configured and Spotify genres are sparse.
+    # Scans the grounded Google Search research texts already fetched per track.
+    research_styles = _extract_genre_terms(context.get("tracks", []))
+
+    # Merge: Last.fm tags first, then Spotify genres, then research-derived terms.
+    # All de-duplicated (preserving first occurrence order), capped.
     existing_styles = taste.get("recurring_styles") or []
-    all_new = list(dict.fromkeys(lastfm_styles + spotify_genres))
+    all_new = list(dict.fromkeys(lastfm_styles + spotify_genres + research_styles))
     merged_styles = list(dict.fromkeys(all_new + [s for s in existing_styles if s not in all_new]))
     taste["recurring_styles"] = merged_styles[:_MAX_LIST_ITEMS]
 

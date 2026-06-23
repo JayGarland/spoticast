@@ -1406,7 +1406,20 @@ class ResonovaPlayer {
     // Regeneration guard: confirm before generating a fresh episode for a playlist
     // that already has saved episodes.
     if (parsed.playlist_uri) {
-      const existingCount = (this._episodes || [])
+      // _loadEpisodes() runs concurrently with _loadPlaylists(); on mobile the
+      // playlist cards can render before episodes load. Fall back to the
+      // localStorage cache so the guard fires even on the very first tap.
+      let episodes = this._episodes;
+      if (!episodes.length) {
+        try {
+          const raw = localStorage.getItem('resonova:episodes-cache');
+          if (raw) {
+            const cached = JSON.parse(raw);
+            if (Array.isArray(cached.episodes)) episodes = cached.episodes;
+          }
+        } catch {}
+      }
+      const existingCount = episodes
         .filter(ep => ep.playlist_uri === parsed.playlist_uri && ep.status === 'complete')
         .length;
       if (existingCount > 0) {
