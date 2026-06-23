@@ -44,8 +44,16 @@ class Settings(BaseSettings):
     public_host: str = "127.0.0.1"
     port: int = 8765
 
+    # Optional explicit override for the Spotify OAuth redirect URI.
+    # Set this when running behind a custom domain (e.g. resonova.app via Cloudflare Tunnel).
+    # When set, auto-detection (ngrok, Tailscale host headers) is bypassed.
+    # Example: REDIRECT_URI=https://resonova.app/auth/callback
+    redirect_uri_override: str | None = None
+
     @property
     def redirect_uri(self) -> str:
+        if self.redirect_uri_override:
+            return self.redirect_uri_override
         return f"http://{self.public_host}:{self.port}/auth/callback"
 
     @property
