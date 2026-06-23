@@ -258,17 +258,6 @@
         Or click one of your playlists below.
       </p>
 
-      <!-- Regeneration confirmation overlay -->
-      <div class="regeneration-confirm" id="regeneration-confirm" style="display:none">
-        <div class="regeneration-confirm-body">
-          <p class="regeneration-confirm-text" id="regeneration-confirm-text"></p>
-          <div class="regeneration-confirm-actions">
-            <button class="btn btn-ghost" id="regeneration-cancel-btn" type="button">Cancel</button>
-            <button class="btn btn-primary" id="regeneration-proceed-btn" type="button">Generate fresh</button>
-          </div>
-        </div>
-      </div>
-
       <div class="error-msg" id="error-msg"></div>
 
       <!-- Now-playing mini panel — shown in library while playback is active -->
@@ -499,6 +488,17 @@
     </div>
 
   </div><!-- /app -->
+
+  <!-- Regeneration confirmation overlay — direct body child so position:fixed is viewport-relative -->
+  <div class="regeneration-confirm" id="regeneration-confirm" style="display:none">
+    <div class="regeneration-confirm-body">
+      <p class="regeneration-confirm-text" id="regeneration-confirm-text"></p>
+      <div class="regeneration-confirm-actions">
+        <button class="btn btn-ghost" id="regeneration-cancel-btn" type="button">Cancel</button>
+        <button class="btn btn-primary" id="regeneration-proceed-btn" type="button">Generate fresh</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Hidden audio element for commentary playback -->
   <audio id="resonova-audio" preload="auto"></audio>
