@@ -28,6 +28,8 @@ curl https://cursor.com/install -fsS | bash
 
 2026-06-23 安装时发现 wrapper 脚本 regex bug：版本目录名含时间戳（`2026.06.19-20-24-33-hash`），但 agent.ps1 的 regex 只匹配 `YYYY.MM.DD-hash` 格式。已修复：`agent.ps1` 第 46 行 regex 改为 `^\d{4}\.\d{1,2}\.\d{1,2}-\d{2}-\d{2}-\d{2}-[a-f0-9]+$`。
 
+**更正 (Chef, 2026-06-23)**：实际被调用的 wrapper 是 **`cursor-agent.ps1`**（`cursor-agent.cmd` 和 `agent.cmd` 都走它），不是 `agent.ps1`——之前的修复改错了文件，标准命令 `cursor-agent --version` 仍报 "No version directories found"。已修正 `cursor-agent.ps1` 第 48 行 regex 为 `^\d{4}\.\d{1,2}\.\d{1,2}(-\d{2}){0,3}-[a-f0-9]+$`（兼容含/不含时间戳两种格式）。修复后 `cursor-agent --version` / `agent --version` 均正常返回版本。Chef 已实测无头 read + edit（`-p ... -f --output-format text --workspace <repo> --model gemini-3.5-flash`）均成功——比 agy 干净得多：无 cwd hack、无需绝对路径、输出正常捕获。
+
 ## 认证
 
 ```powershell
