@@ -67,6 +67,19 @@ Design notes:
   fourth wall, recite inventory, or address the listener.
 - No new architecture; no hosting / accounts / billing / multi-user (all still parked).
 
+## v2 — Personalized Ordering + Shareable Identity (shipped 2026-06-23)
+
+- **Personalized flow-aware ordering** (`9da5282`) — the episode-ordering scorer now applies a
+  *soft* taste bias (artist affinity from the durable profile + a strong/popular opener), kept
+  small vs the variety penalties. The 20-random-candidate generation is preserved, so the order
+  leans toward taste but stays non-deterministic — **never locked** (a loved artist opened ~39/50,
+  yet 30 runs produced 30 distinct orders). No energy arc: Spotify audio-features are
+  deprecated/403, so the signal is durable taste + track `popularity`. No-taste path byte-identical.
+- **Shareable episode identity** (`1e33437`) — each episode gets an evocative one-line tagline
+  (one LLM call; stance-B preserved — describes the music, not the listener), a deterministic
+  gradient cover, and a Share button that copies a blurb to the clipboard. Old episodes degrade to
+  no-tagline.
+
 ## Pivot Note (2026-06-23)
 
 The later decision record `bounded-personal-music-narrator-pivot.md` changes the product direction:
@@ -83,8 +96,8 @@ From the market benchmark's fit-ranked list, still in "sharpen" scope:
 
 - **Mood / context lens** (morning / late-night / road-trip / focus) and an **era-angle lens** —
   deferred from v1 (boss chose Depth + Vibe first); the cleanest next lenses.
-- **Richer episode naming / shareable episode identity** (cheap perceived-quality win).
-- **Flow-aware track ordering** (energy arc) beyond random shuffle — natural once a profile exists.
+- ~~Richer episode naming / shareable episode identity~~ — **shipped `1e33437`** (see v2 above).
+- ~~Flow-aware track ordering~~ — **shipped `9da5282`** (taste-biased, never locked; no energy arc — audio-features deprecated).
 - Optional: saved/default lens presets beyond the existing durable prefs.
 
 ## Relation to the roadmap
