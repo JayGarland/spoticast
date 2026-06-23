@@ -1322,7 +1322,21 @@ class ResonovaPlayer {
         if (state) {
           this._renderDiagnostics(state);
           const currentUri = state.track_window?.current_track?.uri;
-          if (currentUri === uri && !state.paused) return true;
+          if (currentUri === uri && !state.paused) {
+            // Confirm audio position actually advances (guard against blind "playing")
+            const firstPos = state.position || 0;
+            await new Promise(resolve => setTimeout(resolve, 500));
+            const reState = await this.spotifyPlayer?.getCurrentState();
+            if (reState) {
+              this._renderDiagnostics(reState);
+              const rePos = reState.position || 0;
+              if (rePos - firstPos > 250) return true;
+              // Position not advancing — continue loop to timeout
+              this._obsRecord('play:start:stalled', `pos:${firstPos}->${rePos}`);
+              continue;
+            }
+            return true; // no re-state available; trust the initial match
+          }
         }
       } catch (_) { }
       await new Promise(resolve => setTimeout(resolve, 250));
@@ -1415,7 +1429,13 @@ class ResonovaPlayer {
   }
 
   _streamProgress(jobId) {
+    // Close any previous stream before opening a new one (stale-SSE guard)
+    if (this._activeStream) {
+      this._activeStream.close();
+      this._activeStream = null;
+    }
     const es = new EventSource(`/jobs/${jobId}/stream`);
+    this._activeStream = es;
 
     this._generationComplete = false;
 
@@ -1426,6 +1446,8 @@ class ResonovaPlayer {
 
     // Intro is ready — start playback immediately with just the intro audio
     es.addEventListener('intro_ready', (e) => {
+      // Stale-event guard: ignore if this stream is no longer the active generation
+      if (jobId !== this._activeGenerationId) return;
       const { url, episode_name } = JSON.parse(e.data);
       if (episode_name) this._activeGenerationName = episode_name;
       this._markAllStepsDone();
@@ -1799,15 +1821,32 @@ class ResonovaPlayer {
   _setBlindSpotifyDeadline(item) {
     if (this._segmentDeadline || !item?.duration_ms) return;
     const sentinel = item;
-    const deadlineMs = Math.max(3000, item.duration_ms + 3000);
+    const deadlineMs = 8000; // short re-check window instead of full track duration
     this._obsRecord('deadline:blind:armed', `${deadlineMs}ms`);
-    this._segmentDeadline = setTimeout(() => {
-      if (this.currentItem === sentinel && !this._trackEndFired) {
-        console.log('[Resonova] Blind Spotify deadline fired; forcing advance');
-        this._obsRecord('deadline:blind:fired', '');
-        this._trackEndFired = true;
-        this._fadeSpotifyVolume(_SPOTIFY_VOLUME, 0, _CROSSFADE_MS).then(() => this._playNext());
+    this._segmentDeadline = setTimeout(async () => {
+      if (this.currentItem !== sentinel || this._trackEndFired) {
+        this._segmentDeadline = null;
+        return;
       }
+      // Re-sample position to see if audio is actually playing now
+      try {
+        const state = await this.spotifyPlayer?.getCurrentState();
+        if (state) {
+          const currentPos = state.position || 0;
+          if (currentPos > 500) {
+            // Position advanced — audio caught up; do not force-advance
+            this._obsRecord('deadline:blind:cancelled', `pos:${currentPos}ms`);
+            this._segmentDeadline = null;
+            return;
+          }
+        }
+      } catch (_) { }
+      // Position still at/near zero — force-advance
+      console.log('[Resonova] Blind Spotify deadline fired; forcing advance');
+      this._obsRecord('deadline:blind:fired', '');
+      this._trackEndFired = true;
+      await this._fadeSpotifyVolume(_SPOTIFY_VOLUME, 0, _CROSSFADE_MS);
+      this._playNext();
       this._segmentDeadline = null;
     }, deadlineMs);
   }
@@ -2952,6 +2991,11 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   document.getElementById('back-from-generating-btn').addEventListener('click', () => {
+    // Close any active SSE stream — the generation won't be observed
+    if (resonova._activeStream) {
+      resonova._activeStream.close();
+      resonova._activeStream = null;
+    }
     resonova._showState('connected', { forceRefreshEpisodes: true });
   });
 
