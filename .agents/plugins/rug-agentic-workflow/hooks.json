@@ -1,0 +1,37 @@
+{
+  "rug-tool-whitelist": {
+    "PreToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh",
+            "args": ["-File", ".agents/plugins/rug-agentic-workflow/scripts/rug-pre-tool-use.ps1"],
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  },
+  "rug-protocol-injection": {
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "pwsh",
+        "args": ["-File", ".agents/plugins/rug-agentic-workflow/scripts/rug-pre-invocation.ps1"],
+        "timeout": 5
+      }
+    ]
+  },
+  "rug-stop-enforcement": {
+    "Stop": [
+      {
+        "type": "command",
+        "command": "pwsh",
+        "args": ["-File", ".agents/plugins/rug-agentic-workflow/scripts/rug-stop.ps1"],
+        "timeout": 5
+      }
+    ]
+  }
+}

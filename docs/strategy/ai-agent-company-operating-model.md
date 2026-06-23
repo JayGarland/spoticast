@@ -454,7 +454,10 @@ Maturity ranking for multi-agent CLI workflows (boss research, 2026-06-22):
 4. **reasonix** — DeepSeek planner/executor (low-cost, cache-stable); a main executor + optional
    planner, not a full specialist team.
 5. **Antigravity CLI** — Gemini CLI's successor (Gemini CLI retired 2026-06-18 for individual
-   tiers); verify install/account/migration before relying on it.
+   tiers). Installed 2026-06-23 (v1.0.10, Windows x64). Available as a supplementary CLI.
+   No `--agent` CLI flag, but the platform supports custom sub-agents via `define_subagent` /
+   `invoke_subagent` tools, plus plugins and SKILL.md skills. Manager orchestration is possible
+   through prompt-level subagent delegation. See `docs/strategy/antigravity-cli-chef-guide.md`.
 
 Budget reality (boss): Claude Code is best but running multi-agent on Claude is costly; for budget,
 reasonix (DeepSeek) or Copilot `/fleet` are cheaper. Decision unchanged for now: keep Copilot CLI as

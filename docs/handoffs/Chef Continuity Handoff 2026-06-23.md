@@ -22,8 +22,15 @@ Primary responsibilities:
 
 - Turn boss goals into bounded plans or manager briefs.
 - Choose the manager: usually RUG for bounded implementation, gem/gem-orchestrator for diagnosis, OCP for strategy/docs/org.
-- Prefer direct CLI manager control when possible:
+- Prefer direct CLI manager control when possible.
+  Primary (RUG orchestration, --agent flag):
   `copilot -C "F:\GitHub\resonova" --agent "rug-agentic-workflow:rug-orchestrator" --allow-all --no-ask-user -p "<brief>"`
+  Supplementary (Antigravity CLI — no `--agent` flag, but supports `define_subagent`/
+  `invoke_subagent` + plugins/skills; prompt-level agent delegation):
+  `agy --add-dir "F:\GitHub\resonova" --model "<model>" --print "<brief>" --dangerously-skip-permissions`
+  RUG has been ported to an Antigravity plugin: `.agents/plugins/rug-agentic-workflow/`
+  (Hooks + Skills + Rules; isolated from Copilot/Codex). Load rug-orchestrator skill to use.
+  See `docs/strategy/antigravity-cli-chef-guide.md` for full comparison and usage notes.
 - Gate every manager output: response, handoff, `git status`, `git diff`, validation, scope.
 - Patch small gate issues yourself when cheaper than sending back.
 - Commit accepted validated scoped work.
@@ -151,6 +158,25 @@ copilot -C "F:\GitHub\resonova" --agent "rug-agentic-workflow:rug-orchestrator" 
 If Copilot reports unavailable agent path, use logical id:
 
 `rug-agentic-workflow:rug-orchestrator`
+
+Alternative RUG invocation via Antigravity CLI (experimental):
+
+```powershell
+agy --add-dir "F:\GitHub\resonova" --model "Claude Sonnet 4.6 (Thinking)" --print "
+Load the rug-orchestrator skill from .agents/plugins/rug-agentic-workflow/ and execute the RUG protocol:
+
+Implement the task in: F:\GitHub\resonova\docs\handoffs\<Implementation Brief>.md
+
+Rules:
+- Stay strictly inside the brief.
+- Do not commit.
+- Protect existing dirty work.
+- Produce the required handoff.
+" --dangerously-skip-permissions
+```
+
+Note: Antigravity mode uses Skills + Hooks + Rules instead of the --agent flag.
+The plugin is at `.agents/plugins/rug-agentic-workflow/` and only affects Antigravity CLI.
 
 RUG risks:
 

@@ -1,0 +1,4 @@
+{
+  "name": "rug-agentic-workflow",
+  "description": "RUG three-agent orchestration workflow ported to Antigravity. Orchestrator + SWE + QA subagents with platform-level hooks enforcement."
+}
