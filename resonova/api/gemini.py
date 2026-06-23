@@ -56,7 +56,7 @@ CORE PRINCIPLES:
 - Write for spoken word: natural contractions, conversational rhythm, occasional wit.
 - Vary sentence length — short punchy lines followed by longer flowing ones.
 - Each line should earn its place — every sentence should be either informative, interesting, or emotionally resonant.
-- FOCUS ON THE ARTISTS AND THEIR STORIES — the music is the subject, not the listener. A rare, light, third-person nod to the listener's taste is allowed ONLY when a PERSISTENT MEMORY section is present and it fits the playlist (see that section's guardrail); with no such section, do not reference the listener at all.
+- FOCUS ON THE ARTISTS AND THEIR STORIES — the music is the subject. Follow the stance guardrail in the generated prompt: with no PERSISTENT MEMORY section, do not reference the listener at all; with strict Stance B, keep the fourth wall intact; with bounded Stance C, direct listener address is allowed only inside the private music-memory limits described there.
 
 CONVERSATIONAL TEXTURE — this is the most important instruction:
 The hosts are in a real conversation. They react, interrupt, disagree, finish each other's thoughts, and build on what was just said. Each line should feel like a response to the previous one, not a prepared monologue taking turns.
@@ -204,6 +204,52 @@ _RESPONSE_SCHEMA = {
     },
     "required": ["intro", "tracks", "outro"],
 }
+
+
+def _persistent_memory_guardrail(memory_enabled: bool) -> str:
+    if memory_enabled:
+        return (
+            "GUARDRAIL — bounded Stance C private music memory: use the above only as "
+            "private steering for THIS playlist. You MAY address the listener directly "
+            'with "you" / "your" when it sounds natural, and you MAY make bounded, '
+            "music-domain callbacks to grounded patterns such as recurring styles, "
+            "recent listening, playlist affinity, seasonal returns, and feedback "
+            "corrections. Keep callbacks sparse and rooted in the playlist's actual "
+            "music. If the memory above is thin, use only light present-playlist "
+            "personalization; never invent history. NEVER use unrelated personal "
+            "context, expose memory metadata, mention replay counts or session history, "
+            'say "last time", "last cast", or "you replayed", recite the listener\'s '
+            "artists or tracks as proof of memory, leak private memory into shared or "
+            "public casts, or make the listener the subject. The music stays the subject."
+        )
+    return (
+        "GUARDRAIL — strict Stance B radio style: use the above to choose angles and "
+        "steer tone, but keep the fourth wall intact. You MAY occasionally give a "
+        "LIGHT, third-person nod to the listener's taste "
+        '(e.g. "this set\'s built for someone who lives at the quieter end of things") '
+        "ONLY where it genuinely fits THIS playlist's actual music. NEVER address the "
+        'listener directly ("you" / "your"), name the listener\'s own artists or tracks '
+        "back at them, reference past sessions or replay behavior, use unrelated "
+        "personal context, or claim a taste that contradicts what is actually playing. "
+        "Keep it rare and natural: the listener is overhearing two hosts talk, and the "
+        "music stays the subject."
+    )
+
+
+def _script_cache_fingerprint(context: dict[str, Any]) -> str:
+    persistent_profile = context.get("persistent_profile")
+    memory_enabled = None
+    if isinstance(persistent_profile, dict):
+        memory_enabled = persistent_profile.get("memory_enabled", True)
+    cache_context = {
+        "incognito": bool(context.get("incognito", False)),
+        "memory_enabled": memory_enabled,
+        "cast_depth": context.get("cast_depth"),
+        "cast_vibe": context.get("cast_vibe"),
+        "commentary_language": context.get("commentary_language"),
+        "persistent_profile": persistent_profile,
+    }
+    return json.dumps(cache_context, sort_keys=True, ensure_ascii=False, default=str)
 
 
 def build_prompt(context: dict[str, Any]) -> str:
@@ -384,27 +430,9 @@ def build_prompt(context: dict[str, Any]) -> str:
             meta = f"[{src}/{conf}]" if src or conf else ""
             mem_lines.append(f"{pin_marker}{m['text']} {meta}".strip())
 
-        # Stance B guardrail (host-awareness checkpoint, signed off 2026-06-22):
-        # a light, third-person, playlist-grounded taste nod is allowed; direct
-        # address, inventory, cross-cast history, and playlist-contradiction are not.
-        mem_lines.append(
-            "GUARDRAIL — taste acknowledgment: use the above to choose angles and steer tone. "
-            "You MAY occasionally give a LIGHT, third-person nod to the listener's taste "
-            "(e.g. \"this set's built for someone who lives at the quieter end of things\") — but "
-            "ONLY where it genuinely fits THIS playlist's actual music. NEVER: address the listener "
-            "directly (\"you\" / \"your\"); name the listener's own artists or tracks back at them "
-            "(use abstract style/mood descriptors, never their inventory); reference anything from a "
-            "past session (\"last time\", \"you've been\", \"lately\", \"you replayed\", "
-            "\"last cast\") — every cast is fresh; or claim "
-            "a taste that contradicts what is actually playing. Keep it rare and natural — a passing "
-            "nod, never the subject. Frame any nod as the hosts' own observation about the MUSIC "
-            "(\"this set suits someone who…\") within their conversation with each other — never as "
-            "the hosts noticing, turning to, or addressing the listener. The listener is always "
-            "overhearing two hosts talk; the fourth wall stays intact. The music stays the subject."
-        )
-
-        # Cap total block to ~15 lines (design spec §7)
-        mem_lines = mem_lines[:15]
+        # Cap profile facts while keeping the stance guardrail present.
+        mem_lines = mem_lines[:14]
+        mem_lines.append(_persistent_memory_guardrail(memory_enabled))
         persistent_memory_section = (
             "\n═══ PERSISTENT MEMORY ═══\n"
             + "\n".join(mem_lines)
@@ -553,7 +581,12 @@ async def generate_script(context: dict[str, Any]) -> dict:
     # Cache key includes episode order because commentary references previous/upcoming tracks.
     track_uris = [t["uri"] for t in context["tracks"]]
     username = context.get("lastfm_user", {}).get("username", "")
-    script_key = cache.cache_key("script_v4_ordered", username, *track_uris)
+    script_key = cache.cache_key(
+        "script_v5_stance",
+        username,
+        _script_cache_fingerprint(context),
+        *track_uris,
+    )
     cached = cache.get(_CACHE_PREFIX, script_key)
     if cached is not None:
         return cached

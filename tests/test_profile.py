@@ -59,6 +59,9 @@ def _run_tests() -> None:
         _test_reset_deletes_feedback(profile_mod)
         _test_memory_off_prompt_omits_trail()
         _test_memory_on_prompt_contains_both()
+        _test_memory_on_prompt_uses_bounded_stance_c()
+        _test_memory_off_prompt_uses_strict_stance_b()
+        _test_sparse_memory_on_prompt_warns_against_invented_history()
         _test_replay_affinity_prompt_memory_controls()
         _test_incognito_prompt_omits_all()
         _test_summarizers_skip_trail_when_memory_disabled(profile_mod)
@@ -452,6 +455,8 @@ def _test_disabled_profile_prompt_unchanged():
         "Memory-off profile must still inject a PERSISTENT MEMORY block (DURABLE fields)"
     )
     assert "Radiohead" in prompt, "DURABLE top_artists should appear in memory-off prompt"
+    assert "strict Stance B" in prompt, "Memory-off profile should stay in strict Stance B"
+    assert 'NEVER address the listener directly ("you" / "your")' in prompt
     print("  disabled_profile_prompt_unchanged ✓")
 
 
@@ -472,6 +477,7 @@ def _test_populated_profile_prompt_has_block():
     prompt = build_prompt(ctx)
     assert "PERSISTENT MEMORY" in prompt, "Non-empty enabled profile must inject memory block"
     assert "Radiohead" in prompt, "Top artists should appear in memory block"
+    assert "bounded Stance C private music memory" in prompt
     assert "you often listen to" not in prompt.lower(), (
         "Prompt must NOT contain forbidden phrase 'you often listen to'"
     )
@@ -956,6 +962,103 @@ def _test_memory_on_prompt_contains_both():
     print("  memory_on_prompt_contains_both ✓")
 
 
+def _test_memory_on_prompt_uses_bounded_stance_c():
+    """memory_enabled=True → direct private music narration is permitted with guardrails."""
+    from resonova.api.gemini import build_prompt
+
+    ctx = _make_minimal_context()
+    ctx["persistent_profile"] = {
+        "memory_enabled": True,
+        "taste_profile": {
+            "top_artists": ["DurableMain"],
+            "recurring_styles": ["ambient"],
+            "favorite_eras": [],
+            "recent_shifts": ["TrailShiftArtist"],
+            "playlist_patterns": [],
+            "saved_library_artists": [],
+            "followed_artists": [],
+            "replay_affinity": ["strong affinity with 'Night Drive' style"],
+        },
+        "memories": [],
+        "commentary_preferences": {
+            "tone": [], "depth": "balanced", "avoid": [], "loved_patterns": []
+        },
+    }
+
+    prompt = build_prompt(ctx)
+
+    assert "bounded Stance C private music memory" in prompt
+    assert 'MAY address the listener directly with "you" / "your"' in prompt
+    assert "music-domain callbacks" in prompt
+    assert "unrelated personal context" in prompt
+    assert "recite the listener's artists or tracks as proof of memory" in prompt
+    assert "The music stays the subject" in prompt
+    print("  memory_on_prompt_uses_bounded_stance_c ✓")
+
+
+def _test_memory_off_prompt_uses_strict_stance_b():
+    """memory_enabled=False → direct-address bans remain explicit."""
+    from resonova.api.gemini import build_prompt
+
+    ctx = _make_minimal_context()
+    ctx["persistent_profile"] = {
+        "memory_enabled": False,
+        "taste_profile": {
+            "top_artists": ["DurableMain"],
+            "recurring_styles": ["ambient"],
+            "favorite_eras": [],
+            "recent_shifts": ["TrailShiftArtist"],
+            "playlist_patterns": [],
+            "saved_library_artists": [],
+            "followed_artists": [],
+            "replay_affinity": ["strong affinity with 'Night Drive' style"],
+        },
+        "memories": [],
+        "commentary_preferences": {
+            "tone": [], "depth": "balanced", "avoid": [], "loved_patterns": []
+        },
+    }
+
+    prompt = build_prompt(ctx)
+
+    assert "strict Stance B radio style" in prompt
+    assert 'NEVER address the listener directly ("you" / "your")' in prompt
+    assert "bounded Stance C" not in prompt
+    assert "TrailShiftArtist" not in prompt
+    assert "Night Drive" not in prompt
+    print("  memory_off_prompt_uses_strict_stance_b ✓")
+
+
+def _test_sparse_memory_on_prompt_warns_against_invented_history():
+    """Sparse memory-on profiles should not authorize fabricated callbacks."""
+    from resonova.api.gemini import build_prompt
+
+    ctx = _make_minimal_context()
+    ctx["persistent_profile"] = {
+        "memory_enabled": True,
+        "taste_profile": {
+            "top_artists": ["DurableMain"],
+            "recurring_styles": [],
+            "favorite_eras": [],
+            "recent_shifts": [],
+            "playlist_patterns": [],
+            "saved_library_artists": [],
+            "followed_artists": [],
+            "replay_affinity": [],
+        },
+        "memories": [],
+        "commentary_preferences": {
+            "tone": [], "depth": "balanced", "avoid": [], "loved_patterns": []
+        },
+    }
+
+    prompt = build_prompt(ctx)
+
+    assert "If the memory above is thin" in prompt
+    assert "never invent history" in prompt
+    print("  sparse_memory_on_prompt_warns_against_invented_history ✓")
+
+
 def _test_replay_affinity_prompt_memory_controls():
     """Replay affinity should be private steering and still obey incognito."""
     from resonova.api.gemini import build_prompt
@@ -978,6 +1081,8 @@ def _test_replay_affinity_prompt_memory_controls():
     }
     prompt = build_prompt(ctx)
     assert "Rainy Window" in prompt, "memory-on replay affinity should reach the prompt"
+    assert "playlist affinity" in prompt, "replay affinity should be exposed as a style signal"
+    assert "mention replay counts or session history" in prompt
     assert "you replayed" in prompt, "guardrail should forbid explicit replay callbacks"
 
     ctx["incognito"] = True
