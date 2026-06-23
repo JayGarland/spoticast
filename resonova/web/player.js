@@ -1345,7 +1345,7 @@ class ResonovaPlayer {
           if (currentUri === uri && !state.paused) {
             // Confirm audio position actually advances (guard against blind "playing")
             const firstPos = state.position || 0;
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await new Promise(resolve => setTimeout(resolve, 750));
             const reState = await this.spotifyPlayer?.getCurrentState();
             if (reState) {
               this._renderDiagnostics(reState);
@@ -1879,7 +1879,7 @@ class ResonovaPlayer {
   _setBlindSpotifyDeadline(item) {
     if (this._segmentDeadline || !item?.duration_ms) return;
     const sentinel = item;
-    const deadlineMs = 8000; // short re-check window instead of full track duration
+    const deadlineMs = 5000; // short re-check window instead of full track duration
     this._obsRecord('deadline:blind:armed', `${deadlineMs}ms`);
     this._segmentDeadline = setTimeout(async () => {
       if (this.currentItem !== sentinel || this._trackEndFired) {
