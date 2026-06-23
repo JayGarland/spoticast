@@ -24,16 +24,83 @@ as a sequenced roadmap, not competing alternatives:
 | Step | Access Shape | Purpose |
 |------|-------------|---------|
 | **Option A (done)** | Developer local self-hosted alpha | Internal checkpoint, code validation, developer audience. Bring your own keys. |
-| **Option B (next)** | Private hosted owner/beta instance | Owner + small trusted testers. Platform-managed API keys. Direct browser access. |
+| **Option B (next)** | Private hosted owner/beta instance | Owner + small trusted testers. Platform-managed API keys. Direct browser access. No user setup. |
 | **Option C (ultimate)** | Public hosted app with accounts and billing | Normal Spotify Premium users. Subscription or quota-based cost recovery. Full hosted memory and profile per user. |
 
-## What This Means
+---
 
-- Option A is complete. The developer alpha checkpoint is tagged at `v0.1-alpha-developer`.
-- Option B is the current engineering target. It is not yet started. It is the bridge between
-  the local MVP and a normal-user hosted experience.
-- Option C is the destination. All product, memory, feedback, and identity work should be
-  designed with Option C in mind — even when the current build is Option A or B.
+## What Each Option Means (Plain Language)
+
+### Option A — Developer Local Alpha (Done)
+
+Like a GitHub developer project. The user clones the repo, installs dependencies,
+creates a `.env` file with their own Spotify and Gemini API keys, and runs the server
+locally on their own machine. Every developer is fully self-sufficient and pays their
+own API costs.
+
+User experience:
+```
+clone repo → configure .env → run server → open localhost:8765
+```
+
+Status: **Complete.** Tagged at `v0.1-alpha-developer`.
+
+---
+
+### Option B — Private Hosted Beta (Next)
+
+The boss runs a server somewhere on the internet (a VPS, cloud instance, or PC exposed
+via Tailscale) and invites specific people to use it through a normal browser URL.
+
+User experience:
+```
+open https://resonova.yourserver.com → click Connect Spotify → start listening
+```
+
+The invited user brings nothing — no Python, no API keys, no repo clone. The boss
+pays the Gemini and TTS API costs. Access is controlled: the boss decides who gets the
+link. The server is private and invite-only, not a public product. This is the v0.1
+release shape that proves the product works for non-developer humans.
+
+Status: **Not yet started.** Current engineering target.
+
+---
+
+### Option C — Public Hosted App (Ultimate Goal)
+
+A normal consumer SaaS product. Anyone can sign up and use it, like Spotify, Notion,
+or any web app. Each user has their own account, their own taste profile stored in the
+cloud, and pays a subscription or uses a free quota that covers their share of the API
+costs.
+
+User experience:
+```
+open https://resonova.app → create account → connect Spotify → start listening
+→ taste profile grows over time, stored per account in the cloud
+→ subscription or quota covers API costs
+```
+
+This is the destination. All product, memory, profile, and identity architecture should
+be designed with Option C in mind — even when the current build is still Option A or B.
+
+Status: **Parked.** Destination only. No implementation until Option B is validated.
+
+---
+
+## Sequencing
+
+```
+Option A (done)     → developer or self-hoster, own keys, own machine
+       ↓
+Option B (next)     → boss hosts it, boss pays, boss invites testers
+       ↓
+Option C (ultimate) → anyone signs up, they pay, their memory lives in the cloud
+```
+
+Each step unlocks the next. Option B proves the product works for non-developer
+humans before building the full infrastructure Option C requires.
+
+---
 
 ## Implications for Design and Architecture
 
@@ -48,6 +115,8 @@ Agents, managers, and chefs should read this decision when:
 - Writing copy, README text, or product positioning. The product destination is a public
   personal AI radio companion — not a developer tool or a self-hosted app.
 
+---
+
 ## What Is Still Parked
 
 This decision does not approve implementation of Option C components today. The
@@ -59,6 +128,8 @@ following remain parked until explicitly reopened by boss/chef:
 - Full cloud database for per-user profiles and feedback.
 - Public launch or marketing.
 
+---
+
 ## Relationship to Existing Guardrails
 
 The existing parked list in `v0.1-roadmap.md` and `persistent-profile-feedback-brief.md`
@@ -69,6 +140,8 @@ permanently.
 The product direction from `release-access-and-memory-positioning-brief.md` is unchanged:
 the durable wedge is inspectable personal music memory that steers hosted AI commentary.
 Option C is the release shape that makes that wedge available to normal users at scale.
+
+---
 
 ## Option B Completion Gate
 
