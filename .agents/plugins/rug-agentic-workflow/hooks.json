@@ -1,5 +1,7 @@
 {
   "rug-tool-whitelist": {
+    "enabled": false,
+    "_note": "DISABLED 2026-06-23: Antigravity CLI does not support invoke_subagent at runtime. The whitelist would block all tools while subagents are unavailable, paralyzing the agent. Re-enable when CLI subagent support is confirmed.",
     "PreToolUse": [
       {
         "matcher": "",

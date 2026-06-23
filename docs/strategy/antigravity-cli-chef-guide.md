@@ -122,13 +122,17 @@ Load the rug-orchestrator skill and execute the RUG protocol on this task:
 " --dangerously-skip-permissions
 ```
 
-**三层强制体系**：
+**三层强制体系**（2026-06-23 smoke test 后发现 CLI 不支持 subagent）：
 
-| 层级 | 机制 | 作用 |
+| 层级 | 机制 | 状态 |
 |---|---|---|
-| 1. Skills | `rug-orchestrator/SKILL.md` | Agent 主动加载编排知识 |
-| 2. Rules | `rug-enforcement.md` (Always On) | 持久约束注入 |
-| 3. Hooks | `hooks.json` + PowerShell 脚本 | **平台级强制执行**——违规的工具调用被直接 deny |
+| 1. Skills | `rug-orchestrator/SKILL.md` | ✅ Agent 可加载编排知识 |
+| 2. Rules | `rug-enforcement.md` (Always On) | ✅ 持久约束注入 |
+| 3. Hooks — PreToolUse | 工具白名单 | ❌ 已禁用——CLI 不支持 `invoke_subagent`，白名单会瘫痪 agent |
+| 3. Hooks — PreInvocation | 协议注入 | ✅ 可用（每次模型调用前注入 RUG 协议） |
+| 3. Hooks — Stop | 防提前退出 | ⚠️ 保守策略：`model_stop` 时强制继续 |
+
+**已知 CLI 限制**：`invoke_subagent` 返回 `subagent not found or not allowed to be invoked`。Subagent 功能似乎是 Antigravity IDE 独占，CLI 的 `--print` 模式不支持多进程编排。RUG 插件当前降级为 Skills + Rules 模式（劝告性约束，非平台级强制）。
 
 ## 与 Copilot CLI 的对比
 

@@ -1,13 +1,15 @@
 ---
 activation: always
-description: Enforce RUG pure-orchestrator constraint — you must delegate ALL implementation work to subagents.
+description: Enforce RUG pure-orchestrator constraint — delegate implementation work to subagents when available, otherwise follow RUG protocol as best-effort guidance.
 ---
 
 # RUG Orchestration Enforcement
 
-You are operating under the RUG (Repeat Until Good) orchestration protocol. This is a hard constraint.
+**2026-06-23 NOTE:** Antigravity CLI does not support `invoke_subagent` at runtime (IDE-only feature). When running in CLI mode, subagent delegation is unavailable — follow the RUG protocol as best-effort guidance rather than a hard constraint. In IDE mode, the hard constraints below apply.
 
-## What You MUST Do
+You are operating under the RUG (Repeat Until Good) orchestration protocol.
+
+## What You MUST Do (IDE mode / when subagents available)
 
 1. **Delegate everything.** Reading files, editing code, running commands, searching — ALL of it goes through `define_subagent` + `invoke_subagent`. You personally use ONLY: `define_subagent`, `invoke_subagent`, `manage_subagents`, `send_message`, `manage_todo_list`.
 
@@ -19,7 +21,14 @@ You are operating under the RUG (Repeat Until Good) orchestration protocol. This
 
 4. **Track everything.** Use `manage_todo_list` to maintain a task list. Create it before launching any work.
 
-## What You MUST NOT Do
+## CLI Mode (subagents unavailable)
+
+When subagents are not available (CLI mode), follow RUG protocol as guidance:
+- Decompose tasks and track with `manage_todo_list`
+- Apply SWE and QA principles from the skills in your own workflow
+- Self-validate against acceptance criteria before reporting completion
+
+## What You MUST NOT Do (IDE mode)
 
 - Read a file yourself — delegate it
 - Search the codebase yourself — delegate it

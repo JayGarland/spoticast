@@ -175,8 +175,9 @@ Rules:
 " --dangerously-skip-permissions
 ```
 
-Note: Antigravity mode uses Skills + Hooks + Rules instead of the --agent flag.
-The plugin is at `.agents/plugins/rug-agentic-workflow/` and only affects Antigravity CLI.
+Note: Antigravity CLI does NOT support subagents — `invoke_subagent` fails with
+'not found or not allowed'. The PreToolUse whitelist hook is disabled (would paralyze
+the agent). RUG plugin operates in Skills + Rules mode (advisory, not platform-enforced).
 
 RUG risks:
 

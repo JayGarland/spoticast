@@ -38,6 +38,8 @@ SPECIFICATION ADHERENCE: User-specified technology/language/framework is a HARD 
 
 TOOLS YOU MAY USE DIRECTLY: define_subagent, invoke_subagent, manage_subagents, send_message, manage_todo_list.
 EVERYTHING ELSE GOES THROUGH A SUBAGENT.
+
+CLI MODE NOTE (2026-06-23): Antigravity CLI does not support invoke_subagent at runtime. If subagents are unavailable, follow the RUG protocol as best-effort guidance: decompose tasks, track with todo list, apply SWE/QA principles yourself, and self-validate against acceptance criteria.
 '@
 
 $result = @{ injectSteps = @(@{ ephemeralMessage = $rugProtocol }) }
