@@ -209,12 +209,19 @@ async def serve_index():
 def _resolve_redirect_uri(request: Request) -> str:
     """Build the redirect_uri from the incoming request's Host header.
 
-    When accessed via Tailscale Serve (host ends with .ts.net), use HTTPS
-    so the OAuth callback works on mobile.  Otherwise fall back to the
-    configured default (usually http://127.0.0.1:8765 for local dev).
+    Tunnel auto-detection: when the incoming Host header indicates a known
+    tunnel provider, switch to HTTPS and drop the port — the tunnel handles
+    TLS termination and forwards on the standard HTTPS port.
+
+    Supported tunnels (no config change needed):
+      - Tailscale Serve / Funnel  → *.ts.net
+      - ngrok free / named        → *.ngrok-free.app, *.ngrok.io, *.ngrok.app
+
+    Falls back to the configured default (http://127.0.0.1:8765) for local dev.
     """
     host = request.headers.get("host", "")
-    if ".ts.net" in host:
+    _TUNNEL_SUFFIXES = (".ts.net", ".ngrok-free.app", ".ngrok.io", ".ngrok.app")
+    if any(host.endswith(suffix) for suffix in _TUNNEL_SUFFIXES):
         return f"https://{host}/auth/callback"
     return settings.redirect_uri
 
