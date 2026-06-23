@@ -31,6 +31,9 @@ Primary responsibilities:
   RUG has been ported to an Antigravity plugin: `.agents/plugins/rug-agentic-workflow/`
   (Hooks + Skills + Rules; isolated from Copilot/Codex). Load rug-orchestrator skill to use.
   See `docs/strategy/antigravity-cli-chef-guide.md` for full comparison and usage notes.
+  Cursor CLI — single-agent delegation via `Task` tool (generalPurpose subagent), 50+ models:
+  `agent -p "<brief>" -f --output-format text --workspace "F:\GitHub\resonova" --model "claude-4.6-sonnet-medium"`
+  See `docs/strategy/cursor-cli-chef-guide.md` for full comparison and usage notes.
 - Gate every manager output: response, handoff, `git status`, `git diff`, validation, scope.
 - Patch small gate issues yourself when cheaper than sending back.
 - Commit accepted validated scoped work.
