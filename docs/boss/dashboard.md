@@ -10,8 +10,8 @@ Updated: on CEO instruction only ("update dashboard")
 | Field | Value |
 |---|---|
 | **Sprint goal** | Option B (Private Hosted Beta) infrastructure ready (Cloudflare Tunnel); uncommitted changes verified & test suite fixed |
-| **Chef recent activity** | Audit uncommitted changes; Fix recursive test in test_variety_episodes.py; Option B gap analysis |
-| **Handoff pass rate (recent)** | 3/3 accepted (this cycle) |
+| **Chef recent activity** | TTS cost cycle closed — Gemini 3.1 Flash TTS confirmed; P0 committed; Dia + local TTS ruled out; 火山引擎 parked for CN expansion |
+| **Handoff pass rate (recent)** | 4/4 accepted (this cycle) |
 | **Current blockers** | None |
 | **Last product scan** | 2026-06-24 (Antigravity, uncommitted changes verified & tests validated) |
 | **Last market briefing** | — |
@@ -43,3 +43,7 @@ Updated: on CEO instruction only ("update dashboard")
 | 2026-06-24 | Chef - Sonnet 4.6 | Org info-flow and audit design consultation | ACCEPT — Dashboard → extend activity board; Process Auditor → park |
 | 2026-06-24 | Antigravity | Audit uncommitted changes, fix test_variety_episodes.py recursion, run test suites, and assess Option B readiness | PASS — all tests green, recursion fixed, Option B gaps analyzed |
 | 2026-06-24 | RUG (Copilot) | Docs reorganization by audience — boss/ + agents/ replace strategy/ | ACCEPT — `9964d6e`; zero stale refs, chef gate passed |
+| 2026-06-24 | Chef - Sonnet 4.6 | TTS cost strategy research + decision | APPROVED — P0 (dialogue cut) now; Dia trial next; model-switch path closed. See `docs/boss/decisions/tts-cost-strategy-decision-record.md` |
+| 2026-06-24 | Chef - Sonnet 4.6 | P0: Cut per-track commentary 5-8 → 3-4 exchanges | DONE — `cad313d`; ~40-50% TTS cost reduction |
+| 2026-06-24 | Chef - Sonnet 4.6 | Dia 1.6B local TTS trial | PARKED — below casting bar; 13× slower than Gemini; fine-tuning needed to close gap. Gemini + P0 is the cost position. |
+| 2026-06-24 | Research agent | 火山引擎 TTS multilingual audit | ACCEPT — Chinese: trial when targeting CN market (dedicated podcast model). JP/KR: secondary trial candidates. EN/FR/DE/ES/PT: stay on Gemini. See `docs/handoffs/火山引擎 TTS Multilingual Audit Brief.md` |
