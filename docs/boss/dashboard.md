@@ -23,7 +23,7 @@ Updated: on CEO instruction only ("update dashboard")
 
 | Agent | Task | Status | Last Update | Blocked By |
 |---|---|---|---|---|
-| RUG (Copilot) | Docs reorganization by audience (boss/ + agents/) | IN_PROGRESS | 2026-06-24 | — |
+| — | No active workstream | — | 2026-06-24 | — |
 
 ## Escalation Flags
 
@@ -41,3 +41,4 @@ Updated: on CEO instruction only ("update dashboard")
 | 2026-06-24 | Chef - Sonnet 4.6 | Wire prior-episode feedback tags into next-cast continuation prompt (Option 1) | ACCEPT — `dcfdd9a` |
 | 2026-06-24 | Chef - Sonnet 4.6 | Org info-flow and audit design consultation | ACCEPT — Dashboard → extend activity board; Process Auditor → park |
 | 2026-06-24 | Antigravity | Audit uncommitted changes, fix test_variety_episodes.py recursion, run test suites, and assess Option B readiness | PASS — all tests green, recursion fixed, Option B gaps analyzed |
+| 2026-06-24 | RUG (Copilot) | Docs reorganization by audience — boss/ + agents/ replace strategy/ | ACCEPT — `9964d6e`; zero stale refs, chef gate passed |
