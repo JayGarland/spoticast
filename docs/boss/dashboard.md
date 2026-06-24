@@ -38,7 +38,7 @@ Updated: on CEO instruction only ("update dashboard")
 |---|---|---|---|
 | 2026-06-23 | gem-reviewer | 3-pass product re-audit (playback, library/UX, memory/stance) | ACCEPT — Blocker/High findings chef-verified |
 | 2026-06-23 | Chef - Opus 4.8 | Full product re-audit gate | ACCEPT — findings calibrated and queued |
-| 2026-06-23 | Boss | Commit `dd5c9b1` — relaxed hidden-page Spotify transition gate | ACCEPT — needs real-device re-test |
+| 2026-06-23 | Boss | Commit `dd5c9b1` — relaxed hidden-page Spotify transition gate | ACCEPT — real-device tested; controlled degradation confirmed as architectural stance (defer hidden segments, recover on visible) |
 | 2026-06-24 | Chef - Sonnet 4.6 | Wire prior-episode feedback tags into next-cast continuation prompt (Option 1) | ACCEPT — `dcfdd9a` |
 | 2026-06-24 | Chef - Sonnet 4.6 | Org info-flow and audit design consultation | ACCEPT — Dashboard → extend activity board; Process Auditor → park |
 | 2026-06-24 | Antigravity | Audit uncommitted changes, fix test_variety_episodes.py recursion, run test suites, and assess Option B readiness | PASS — all tests green, recursion fixed, Option B gaps analyzed |
