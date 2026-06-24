@@ -12,10 +12,10 @@ the memory layer is not data collection — it is a companion that grows with th
 
 ## 0.1 Pivot Update (2026-06-23)
 
-Decision record: `docs/strategy/bounded-personal-music-narrator-pivot.md`.
+Decision record: `docs/boss/product-pivot.md`.
 
 Boss and Chef aligned on a product-direction pivot after reading the boss-curated
-research in `docs/research/`: **Strict Stance B is the shipped safety baseline,
+research in `docs/boss/research/`: **Strict Stance B is the shipped safety baseline,
 not the final product soul.** The target direction is **bounded Stance C: a
 private music-memory narrator**.
 
@@ -42,7 +42,7 @@ The updated distinction:
   later optional experiment.
   **CHECKPOINT RESOLVED (2026-06-22):** Option B confirmed from four angles — the boss's lean, both
   quality passes, the boss-curated research export
-  (`docs/research/AI Companion Personalization and Trust.md`), and a customer's
+  (`docs/boss/research/AI Companion Personalization and Trust.md`), and a customer's
   jump-scare concern (hosts "turning to" the listener feels scary — that's stance C, which B avoids).
   Implemented in `gemini.py` with a **fourth-wall-preserving** guardrail: a rare, light, third-person,
   playlist-grounded taste nod framed as the hosts' own observation about the music — NEVER "you",
@@ -291,10 +291,10 @@ Focus: companion experience, UX, the listener's felt experience.
 >
 > Read these files first (repo root `F:\GitHub\resonova`; you have full workspace access — read
 > the real files, don't rely on this summary):
-> - `docs/strategy/companion-direction-and-memory-use-brief.md` — this brief: baseline (§0) and the
+> - `docs/boss/decisions/companion-direction-and-memory-use-brief.md` — this brief: baseline (§0) and the
 >   open decisions (§3 host awareness, §3.1 personal/public mode, §4 data-use, §5 wiki extension).
-> - `README.md` and `docs/strategy/v0.1-roadmap.md` — product baseline and roadmap.
-> - `docs/strategy/boss-profile.md` — owner preferences and working style.
+> - `README.md` and `docs/boss/roadmap.md` — product baseline and roadmap.
+> - `docs/agents/boss-profile.md` — owner preferences and working style.
 > - `docs/handoffs/Persistent Profile Spotify Trails Design Handoff.md` — memory architecture and
 >   the full list of signals; `docs/handoffs/Persistent Profile Slice One Handoff.md` and
 >   `docs/handoffs/Persistent Profile Slice Two Handoff.md` — what is actually built.
@@ -336,7 +336,7 @@ Focus: independent challenge, privacy/creepiness risk, assumptions.
 >
 > Read these files first (repo root `F:\GitHub\resonova`; you have full workspace access — verify
 > against the real files, don't trust this summary):
-> - `docs/strategy/companion-direction-and-memory-use-brief.md` — baseline (§0) and open decisions.
+> - `docs/boss/decisions/companion-direction-and-memory-use-brief.md` — baseline (§0) and open decisions.
 > - `resonova/profile.py` — exactly what is summarized/persisted (taste, prefs, feedback fold);
 >   confirm whether any raw/episodic or private data is retained.
 > - `resonova/api/gemini.py` — `build_prompt`: how the profile is injected into the cast, the
@@ -388,8 +388,8 @@ Primary mode: Product Reviewer. Secondary mode: Auditor / Investigator.
 >
 > Read these files first (repo root `F:\GitHub\resonova`; full workspace access — read the real
 > files, don't rely on this summary):
-> - `docs/strategy/companion-direction-and-memory-use-brief.md` — baseline (§0) and open decisions.
-> - `README.md`, `docs/strategy/v0.1-roadmap.md`, `docs/strategy/boss-profile.md` — baseline,
+> - `docs/boss/decisions/companion-direction-and-memory-use-brief.md` — baseline (§0) and open decisions.
+> - `README.md`, `docs/boss/roadmap.md`, `docs/agents/boss-profile.md` — baseline,
 >   roadmap, owner preferences.
 > - `resonova/api/gemini.py` — `build_prompt`: profile injection, capping/gating, the "never
 >   narrate the listener" guardrails.

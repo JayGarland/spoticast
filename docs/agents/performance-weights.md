@@ -95,6 +95,6 @@ Claude holder, logged for future review rather than as a binding canonical judgm
   chef with full capability; weight left neutral. No downgrade applied.
 
 Scope note: this update changes only chef-role weights, per the boss's authorization. RUG's
-weight is unchanged here; see `docs/strategy/agent-reviews/2026-06-21-rug-manager-review.md`
+weight is unchanged here; see `docs/agents/reviews/2026-06-21-rug-manager-review.md`
 for the RUG evidence and a separate (boss-pending) recommendation to nudge RUG 0.70 → ~0.75 for
 backend tasks.

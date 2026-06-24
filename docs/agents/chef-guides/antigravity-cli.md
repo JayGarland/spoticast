@@ -175,7 +175,7 @@ copilot -C "F:\GitHub\resonova" --agent "rug-agentic-workflow:rug-orchestrator" 
 **模式 B：Antigravity CLI（实验性）**
 ```powershell
 agy --add-dir "F:\GitHub\resonova" --model "Claude Sonnet 4.6 (Thinking)" --print "
-Define a subagent called 'manager' with system_prompt from docs/strategy/ai-agent-role-job-specs.md (Manager section).
+Define a subagent called 'manager' with system_prompt from docs/agents/job-specs.md (Manager section).
 Then invoke the manager subagent to: <brief>
 " --dangerously-skip-permissions
 ```

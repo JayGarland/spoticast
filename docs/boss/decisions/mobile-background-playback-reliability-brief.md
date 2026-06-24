@@ -155,7 +155,7 @@ Avoid OCP for the first fix attempt unless the task is reframed as diagnosis-onl
 ## Suggested Prompt To Paste Into RUG
 
 ```text
-Use docs/strategy/mobile-background-playback-reliability-brief.md as the parent objective and scope.
+Use docs/boss/decisions/mobile-background-playback-reliability-brief.md as the parent objective and scope.
 
 Fix Resonova's playback reliability bug:
 - On mobile/background playback, Resonova can stop when transitioning to the next segment.

@@ -26,7 +26,7 @@ The distinction:
 
 ## Rationale
 
-The boss-curated research in `docs/research/` changes the product read. Resonova
+The boss-curated research in `docs/boss/research/` changes the product read. Resonova
 should not compete as "AI commentary over a playlist"; Spotify AI DJ, Wrapped
 AI podcast, NotebookLM-style audio recap, AI radio, and stats tools already make
 that space crowded.
@@ -80,8 +80,8 @@ prompt design, and listening tests.
 Read these boss-curated references before future product-direction, Chef, or
 strategy work:
 
-- `docs/research/AI Companion Personalization and Trust.md`
-- `docs/research/Resonova-analysis-market-competition.md`
+- `docs/boss/research/AI Companion Personalization and Trust.md`
+- `docs/boss/research/Resonova-analysis-market-competition.md`
 
 These are exported web-UI research and discussion histories. Treat them as
 product evidence, not incidental scratch notes.

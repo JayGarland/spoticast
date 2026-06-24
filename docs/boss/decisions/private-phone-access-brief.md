@@ -136,7 +136,7 @@ Use RUG only if the task turns into a concrete implementation/fix loop.
 ## Suggested Prompt To Paste Into A Manager Agent
 
 ```text
-Use docs/strategy/private-phone-access-brief.md as the parent objective and scope.
+Use docs/boss/decisions/private-phone-access-brief.md as the parent objective and scope.
 
 Set up or document private single-user phone access for the current Resonova local MVP using Tailscale first. The intended flow is:
 

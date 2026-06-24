@@ -6,18 +6,18 @@ Audience: Agents
 
 Before doing company-role, recruitment, manager, auditor, or chef-level work, read:
 
-- `docs/strategy/ai-agent-company-operating-model.md`
-- `docs/strategy/ai-agent-role-job-specs.md`
-- `docs/strategy/ai-agent-recruitment-execution-guide.md`
-- `docs/strategy/boss-profile.md`
+- `docs/agents/operating-model.md`
+- `docs/agents/job-specs.md`
+- `docs/agents/recruitment-guide.md`
+- `docs/agents/boss-profile.md`
 
 Before product-direction, product-strategy, Chef-level planning, or companion
 stance work, also read:
 
-- `docs/strategy/bounded-personal-music-narrator-pivot.md`
-- `docs/research/`
+- `docs/boss/product-pivot.md`
+- `docs/boss/research/`
 
-`docs/research/` contains boss-curated web-UI research exports and discussion
+`docs/boss/research/` contains boss-curated web-UI research exports and discussion
 history. Treat it as product evidence for strategy work, not incidental scratch
 notes.
 
@@ -25,7 +25,7 @@ Study the boss profile before planning. Agents should understand the boss's auth
 
 When reviewing agent performance, also read:
 
-- `docs/strategy/agent-performance-weights-2026-06-19.md`
+- `docs/agents/performance-weights.md`
 
 ## Operating Rules
 

@@ -10,8 +10,8 @@ Current recruiter: Codex in this session, authorized by the boss as a temporary 
 
 Use this together with:
 
-- `docs/strategy/ai-agent-company-operating-model.md`
-- `docs/strategy/ai-agent-role-job-specs.md`
+- `docs/agents/operating-model.md`
+- `docs/agents/job-specs.md`
 
 Important boundary:
 
@@ -371,7 +371,7 @@ Until a formal database or scoring system exists, use a simple markdown record.
 Suggested file pattern:
 
 ```text
-docs/strategy/agent-reviews/YYYY-MM-DD-agent-review.md
+docs/agents/reviews/YYYY-MM-DD-agent-review.md
 ```
 
 Suggested record format:

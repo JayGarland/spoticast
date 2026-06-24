@@ -8,9 +8,9 @@ This document defines concrete job specs for AI-agent roles Resonova may recruit
 
 Related docs:
 
-- `docs/strategy/ai-agent-company-operating-model.md`
-- `docs/strategy/ai-agent-recruitment-execution-guide.md`
-- `docs/strategy/boss-profile.md`
+- `docs/agents/operating-model.md`
+- `docs/agents/recruitment-guide.md`
+- `docs/agents/boss-profile.md`
 
 ## Common Requirements For All Hired Agents
 
@@ -35,7 +35,7 @@ Handoff expectation:
 
 The boss is not a recruitable agent role. No agent should treat this document as permission to become, replace, or simulate the boss.
 
-Agents should read `docs/strategy/boss-profile.md` to understand the boss's authority, habits, and expectations before doing boss-facing, company-role, recruitment, manager, auditor, or chef-level work.
+Agents should read `docs/agents/boss-profile.md` to understand the boss's authority, habits, and expectations before doing boss-facing, company-role, recruitment, manager, auditor, or chef-level work.
 
 ## Job Spec: Internal Auditor / Investigator / Product Reviewer
 

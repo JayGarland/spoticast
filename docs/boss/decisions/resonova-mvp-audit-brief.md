@@ -221,7 +221,7 @@ Reason: this is an audit, not implementation. OCP's bounded scope, evidence disc
 ## Suggested Prompt To Paste Into A Manager Agent
 
 ```text
-Audit the current Resonova local MVP using the strategy brief at docs/strategy/resonova-mvp-audit-brief.md as the parent objective and scope.
+Audit the current Resonova local MVP using the strategy brief at docs/boss/decisions/resonova-mvp-audit-brief.md as the parent objective and scope.
 
 This is an audit only. Do not implement new features, refactor, or change product direction.
 

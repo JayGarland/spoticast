@@ -36,7 +36,7 @@ Notes:
 - The boss has limited time, energy, and memory, so agent work should reduce cognitive load.
 - The boss should receive concise decision briefs, not raw implementation noise.
 - The boss controls budget for API credits, subscriptions, and agent usage. No agent is free.
-- Agents should read `docs/strategy/boss-profile.md` when doing boss-facing, company-role, recruitment, manager, auditor, or chef-level work.
+- Agents should read `docs/agents/boss-profile.md` when doing boss-facing, company-role, recruitment, manager, auditor, or chef-level work.
 
 ### Chef
 
@@ -457,12 +457,12 @@ Maturity ranking for multi-agent CLI workflows (boss research, 2026-06-22):
    tiers). Installed 2026-06-23 (v1.0.10, Windows x64). Available as a supplementary CLI.
    No `--agent` CLI flag, but the platform supports custom sub-agents via `define_subagent` /
    `invoke_subagent` tools, plus plugins and SKILL.md skills. Manager orchestration is possible
-   through prompt-level subagent delegation. See `docs/strategy/antigravity-cli-chef-guide.md`.
+   through prompt-level subagent delegation. See `docs/agents/chef-guides/antigravity-cli.md`.
 6. **Cursor CLI** — Cursor IDE's standalone CLI agent (`agent` command). Installed 2026-06-23.
    No `--agent` flag, but supports subagent delegation via `Task` tool with predefined types
    (`generalPurpose`, `bugbot`, `security-review`). 50+ models (Claude/OpenAI/Gemini/Grok).
    Full RUG protocol not replicable (no custom subagent roles). See
-   `docs/strategy/cursor-cli-chef-guide.md`.
+   `docs/agents/chef-guides/cursor-cli.md`.
 
 Budget reality (boss): Claude Code is best but running multi-agent on Claude is costly; for budget,
 reasonix (DeepSeek) or Copilot `/fleet` are cheaper. Decision unchanged for now: keep Copilot CLI as
@@ -586,7 +586,7 @@ Model fallback domains to maintain:
 
 - Research model: keep a cheaper fallback for grounded/background research where quality loss is acceptable.
 - Script-writing model: keep at least one lower-cost text-generation option for drafts, experiments, and non-production tests.
-- TTS model: keep fallback or optional TTS providers/models because voice synthesis is a recurring cost driver and can block the whole generation flow. Current TTS options note: `docs/strategy/tts-model-options.md`.
+- TTS model: keep fallback or optional TTS providers/models because voice synthesis is a recurring cost driver and can block the whole generation flow. Current TTS options note: `docs/boss/decisions/tts-model-options.md`.
 
 Current candidate options and preferences:
 

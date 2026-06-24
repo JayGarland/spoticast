@@ -25,7 +25,7 @@ personal AI radio companion that remembers the owner and improves over time
 
 Related release-positioning note:
 
-- `docs/strategy/release-access-and-memory-positioning-brief.md`
+- `docs/boss/decisions/release-access-and-memory-positioning-brief.md`
 
 ## Owner Decision
 
@@ -228,7 +228,7 @@ Possible later routing:
 ## Suggested Prompt To Paste Into A Manager Agent
 
 ```text
-Use docs/strategy/persistent-profile-feedback-brief.md as the parent objective and scope.
+Use docs/boss/decisions/persistent-profile-feedback-brief.md as the parent objective and scope.
 
 Design the first persistent taste profile and lightweight feedback layer for Resonova.
 

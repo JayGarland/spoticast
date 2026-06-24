@@ -5,10 +5,10 @@ status: accepted
 audience: Boss / Chef / Internal
 decision_owner: Boss
 relates_to:
-  - docs/strategy/v0.1-access-shape-decision-record.md
-  - docs/strategy/v0.1-access-shape-decision-brief.md
-  - docs/strategy/release-access-and-memory-positioning-brief.md
-  - docs/strategy/v0.1-roadmap.md
+  - docs/boss/decisions/v0.1-access-shape-decision-record.md
+  - docs/boss/decisions/v0.1-access-shape-decision-brief.md
+  - docs/boss/decisions/release-access-and-memory-positioning-brief.md
+  - docs/boss/roadmap.md
 ---
 
 # Decision Record — Product Destination

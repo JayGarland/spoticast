@@ -43,10 +43,10 @@ Status: complete enough to proceed.
 Accepted evidence:
 
 - `docs/handoffs/Product Baseline Release Readiness Review.md`
-- `docs/strategy/attention-board-next-moves-brief.md`
-- `docs/strategy/v0.1-access-shape-decision-brief.md`
-- `docs/strategy/release-access-and-memory-positioning-brief.md`
-- `docs/strategy/resonova-market-benchmark.md`
+- `docs/boss/decisions/attention-board-next-moves-brief.md`
+- `docs/boss/decisions/v0.1-access-shape-decision-brief.md`
+- `docs/boss/decisions/release-access-and-memory-positioning-brief.md`
+- `docs/boss/market-benchmark.md`
 
 Current baseline:
 
