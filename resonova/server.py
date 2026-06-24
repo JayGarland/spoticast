@@ -740,6 +740,10 @@ async def _run_generation(job: Job):
                 if _latest.get("prior_cast_summary"):
                     context["prior_cast_summary"] = _latest["prior_cast_summary"]
                 context["prior_cast_replay_count"] = _latest.get("replay_count", 0)
+                if _latest.get("id"):
+                    _ep_feedback = profile_store.get_episode_feedback(_latest["id"])
+                    if _ep_feedback:
+                        context["prior_cast_feedback"] = _ep_feedback
 
         script, identity = await asyncio.gather(
             gemini_api.generate_script(context),

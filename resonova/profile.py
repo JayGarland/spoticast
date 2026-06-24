@@ -551,6 +551,15 @@ def _load_feedback() -> list[dict]:
     return events
 
 
+def get_episode_feedback(episode_id: str) -> dict | None:
+    """Return the most recent feedback event for a specific episode, or None."""
+    events = [ev for ev in _load_feedback() if ev.get("episode_id") == episode_id]
+    if not events:
+        return None
+    ev = events[-1]
+    return {"verdict": ev.get("verdict", ""), "tags": list(ev.get("tags") or [])}
+
+
 def fold_feedback_into_profile(profile: dict | None = None) -> dict:
     """Read feedback.jsonl and fold repeated signals into commentary_preferences.
 

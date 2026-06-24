@@ -14,6 +14,22 @@ from resonova.config import settings
 
 _CACHE_PREFIX = "gemini"
 
+_DOWN_TAG_GUIDANCE: dict[str, str] = {
+    "too long": "be more concise — cut filler, get to the point faster",
+    "too shallow": "go deeper — more backstory, more specific detail, fewer surface observations",
+    "too generic": "be more specific — avoid generic descriptions and boilerplate",
+    "wrong vibe": "adjust the emotional register — tone or atmosphere didn't match the music",
+    "too repetitive": "vary your angles — avoid revisiting the same themes",
+    "missed key tracks": "give standout tracks more attention — don't let key moments go unaddressed",
+}
+_UP_TAG_GUIDANCE: dict[str, str] = {
+    "good story": "maintain the narrative structure that worked",
+    "good analysis": "continue that analytical depth",
+    "great vibe": "preserve that energy and register",
+    "perfect pacing": "keep that rhythm — the pacing landed well",
+    "great host energy": "hold onto that enthusiasm and warmth",
+}
+
 # Resolved once at first call; reused to build fresh clients on every request.
 # Avoids the httpx "client has been closed" error that occurs when a singleton
 # genai.Client is reused across thread-pool executor invocations.
@@ -248,6 +264,7 @@ def _script_cache_fingerprint(context: dict[str, Any]) -> str:
         "cast_vibe": context.get("cast_vibe"),
         "commentary_language": context.get("commentary_language"),
         "prior_cast_count": context.get("prior_cast_count", 0),
+        "prior_cast_feedback": context.get("prior_cast_feedback"),
         "persistent_profile": persistent_profile,
     }
     return json.dumps(cache_context, sort_keys=True, ensure_ascii=False, default=str)
@@ -267,6 +284,7 @@ def build_prompt(context: dict[str, Any]) -> str:
     prior_cast_count: int = context.get("prior_cast_count", 0)
     prior_cast_summary: str | None = context.get("prior_cast_summary")
     prior_cast_replay_count: int = context.get("prior_cast_replay_count", 0)
+    prior_cast_feedback: dict | None = context.get("prior_cast_feedback")
 
     has_lastfm = bool(lastfm_user)
 
@@ -513,9 +531,48 @@ def build_prompt(context: dict[str, Any]) -> str:
                 f"It is unclear whether the listener fully engaged with the previous cast. "
                 f"Try a noticeably different approach: different entry points, different angle on the tracks."
             )
+        # Build listener-feedback section from the previous episode's rating.
+        feedback_section = ""
+        if prior_cast_feedback:
+            verdict = prior_cast_feedback.get("verdict", "")
+            tags = [t for t in (prior_cast_feedback.get("tags") or []) if t]
+            if verdict == "down":
+                if tags:
+                    notes = "; ".join(
+                        f"{t}: {_DOWN_TAG_GUIDANCE.get(t, t)}" for t in tags
+                    )
+                    feedback_section = (
+                        f"\n\n## LISTENER FEEDBACK ON PREVIOUS CAST\n"
+                        f"Rating: \U0001f44e Disliked. Tags: {', '.join(tags)}.\n"
+                        f"Address these in this episode: {notes}."
+                    )
+                else:
+                    feedback_section = (
+                        "\n\n## LISTENER FEEDBACK ON PREVIOUS CAST\n"
+                        "Rating: \U0001f44e Disliked (no specific tags). "
+                        "Try a meaningfully different approach."
+                    )
+            elif verdict == "up":
+                if tags:
+                    notes = "; ".join(
+                        f"{t}: {_UP_TAG_GUIDANCE.get(t, t)}" for t in tags
+                    )
+                    feedback_section = (
+                        f"\n\n## LISTENER FEEDBACK ON PREVIOUS CAST\n"
+                        f"Rating: \U0001f44d Liked. Tags: {', '.join(tags)}.\n"
+                        f"Build on what worked: {notes}."
+                    )
+                else:
+                    feedback_section = (
+                        "\n\n## LISTENER FEEDBACK ON PREVIOUS CAST\n"
+                        "Rating: \U0001f44d Liked (no specific tags). "
+                        "Maintain the overall quality and approach."
+                    )
+
         prior_cast_section = (
             f"\n\n## PREVIOUS CAST (episode {prior_cast_count} of this playlist)\n"
-            f"{prior_cast_summary}\n\n"
+            f"{prior_cast_summary}"
+            f"{feedback_section}\n\n"
             f"## CONTINUATION INSTRUCTION\n"
             f"This is episode {prior_cast_count + 1} for this playlist. "
             f"Build forward from the previous cast above. "
