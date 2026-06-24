@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     # Example: REDIRECT_URI=https://resonova.app/auth/callback
     redirect_uri_override: str | None = None
 
+    session_secret_key: str = "change-me-in-production"
+    allowed_spotify_user_ids: str = ""   # comma-separated Spotify user IDs; empty = no allowlist
+
     @property
     def redirect_uri(self) -> str:
         if self.redirect_uri_override:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any
 
@@ -18,6 +19,9 @@ _OAUTH_CACHE = ".research_cache/.spotify_oauth"
 # Module-level OAuth manager (stateful: caches token to .research_cache/.spotify_oauth)
 _oauth: SpotifyOAuth | None = None
 _client: spotipy.Spotify | None = None
+_per_session_client: ContextVar["spotipy.Spotify | None"] = ContextVar(
+    "_per_session_client", default=None
+)
 
 # In-memory caches keyed by URI — survive across regenerations within the same process
 _track_cache: dict[str, TrackInfo] = {}
@@ -53,6 +57,11 @@ def get_oauth(redirect_uri: str | None = None) -> SpotifyOAuth:
 
 
 def get_client() -> spotipy.Spotify:
+    # Check per-session client (multi-user mode, set by server.py on each request)
+    session_sp = _per_session_client.get()
+    if session_sp is not None:
+        return session_sp
+    # Fall back to file-based singleton (dev/CLI mode)
     global _client
     oauth = get_oauth()
     token_info = oauth.get_cached_token()
@@ -85,6 +94,37 @@ def get_current_token() -> str | None:
         except Exception:
             return None
     return token_info["access_token"]
+
+
+def set_session_client(sp: spotipy.Spotify) -> None:
+    """Bind a per-session Spotify client for the current async task context."""
+    _per_session_client.set(sp)
+
+
+def get_client_from_token(token_info: dict) -> spotipy.Spotify:
+    """Create a Spotify client from a token dict (no file cache)."""
+    return spotipy.Spotify(auth=token_info["access_token"], requests_timeout=15)
+
+
+def handle_callback_for_session(code: str, redirect_uri: str) -> dict:
+    """Exchange auth code for token dict without writing to the file cache."""
+    Path(_OAUTH_CACHE).parent.mkdir(parents=True, exist_ok=True)
+    oauth = SpotifyOAuth(
+        client_id=settings.spotify_client_id,
+        client_secret=settings.spotify_client_secret,
+        redirect_uri=redirect_uri,
+        scope=settings.spotify_scopes,
+        open_browser=False,
+    )
+    return oauth.get_access_token(code, as_dict=True, check_cache=False)
+
+
+def refresh_token_if_needed(token_info: dict) -> dict:
+    """Refresh a token dict if expired; return unchanged if still valid."""
+    oauth = get_oauth()
+    if oauth.is_token_expired(token_info):
+        return oauth.refresh_access_token(token_info["refresh_token"])
+    return token_info
 
 
 @dataclass

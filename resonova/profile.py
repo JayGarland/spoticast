@@ -16,10 +16,21 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-_PROFILE_DIR = Path("generated") / "profile"
-_PROFILE_PATH = _PROFILE_DIR / "profile.json"
-_OWNER_PATH = _PROFILE_DIR / "owner_id"
+_OWNER_PATH = Path("generated") / "profile" / "owner_id"   # kept for migration only
 _PROFILE_VERSION = 1
+
+
+def _profile_dir(user_id: str) -> Path:
+    return Path("generated") / "users" / user_id / "profile"
+
+
+def _profile_path(user_id: str) -> Path:
+    return _profile_dir(user_id) / "profile.json"
+
+
+def _feedback_path(user_id: str) -> Path:
+    return _profile_dir(user_id) / "feedback.jsonl"
+
 
 # Size caps — mirrors the variety.py _MAX_RECENT precedent
 _MAX_MEMORIES = 40
@@ -72,12 +83,12 @@ def _empty_profile() -> dict:
 # Load / save / reset
 # ---------------------------------------------------------------------------
 
-def load_profile() -> dict:
+def load_profile(user_id: str) -> dict:
     """Load the profile from disk; return a fresh empty profile on any error."""
-    if not _PROFILE_PATH.exists():
+    if not _profile_path(user_id).exists():
         return _empty_profile()
     try:
-        data = json.loads(_PROFILE_PATH.read_text())
+        data = json.loads(_profile_path(user_id).read_text())
         # Forward-compat: fill any missing top-level keys added in later versions
         empty = _empty_profile()
         for key in ("taste_profile", "commentary_preferences", "memories", "sources"):
@@ -95,24 +106,24 @@ def load_profile() -> dict:
         return _empty_profile()
 
 
-def save_profile(profile: dict) -> None:
+def save_profile(user_id: str, profile: dict) -> None:
     """Enforce size caps, stamp updated_at, and persist profile to disk."""
     profile = _enforce_caps(profile)
     profile["updated_at"] = datetime.now(timezone.utc).isoformat()
-    _PROFILE_DIR.mkdir(parents=True, exist_ok=True)
-    _PROFILE_PATH.write_text(json.dumps(profile, indent=2))
+    _profile_dir(user_id).mkdir(parents=True, exist_ok=True)
+    _profile_path(user_id).write_text(json.dumps(profile, indent=2))
 
 
-def reset_profile() -> dict:
+def reset_profile(user_id: str) -> dict:
     """Wipe profile to an empty skeleton; saved cast episodes are untouched.
 
     Also deletes the feedback file so cleared preferences do not resurrect.
     """
     empty = _empty_profile()
-    _PROFILE_DIR.mkdir(parents=True, exist_ok=True)
-    _PROFILE_PATH.write_text(json.dumps(empty, indent=2))
-    if _FEEDBACK_PATH.exists():
-        _FEEDBACK_PATH.unlink()
+    _profile_dir(user_id).mkdir(parents=True, exist_ok=True)
+    _profile_path(user_id).write_text(json.dumps(empty, indent=2))
+    if _feedback_path(user_id).exists():
+        _feedback_path(user_id).unlink()
     return empty
 
 
@@ -121,24 +132,6 @@ def get_owner_id() -> str | None:
     if _OWNER_PATH.exists():
         return _OWNER_PATH.read_text(encoding="utf-8").strip() or None
     return None
-
-
-def claim_or_check_owner(user_id: str | None) -> bool:
-    """Single-user guard. The first valid connect claims ownership of this instance.
-
-    Returns True if *user_id* is (or just became) the owner; False for any other
-    account or when the id is unknown. Used to stop a second Spotify account's data
-    from merging into the owner's profile (cross-user bleed). Not cleared by
-    reset_profile — clearing memory does not unlock the instance.
-    """
-    if not user_id:
-        return False
-    owner = get_owner_id()
-    if owner is None:
-        _PROFILE_DIR.mkdir(parents=True, exist_ok=True)
-        _OWNER_PATH.write_text(user_id, encoding="utf-8")
-        return True
-    return owner == user_id
 
 
 # ---------------------------------------------------------------------------
@@ -193,7 +186,8 @@ def summarize_context(context: dict[str, Any], profile: dict | None = None,
     Returns the updated profile dict (caller must call save_profile to persist).
     """
     if profile is None:
-        profile = load_profile()
+        profile = {}
+        profile["profile_version"] = _PROFILE_VERSION
 
     listener = context.get("listener_profile", {})
     artist_profiles: dict[str, dict] = context.get("artist_profiles", {})
@@ -262,6 +256,7 @@ _RECENT_TRACK_WINDOW = 50  # most-recent N additions = "current state"
 
 
 def summarize_library(
+    user_id: str,
     saved_tracks: list[dict],
     followed_artists: list[str],
     profile: dict | None = None,
@@ -285,7 +280,7 @@ def summarize_library(
     Returns the updated profile dict (caller must call save_profile to persist).
     """
     if profile is None:
-        profile = load_profile()
+        profile = load_profile(user_id)
 
     taste = profile.setdefault("taste_profile", {
         "top_artists": [], "recurring_styles": [], "favorite_eras": [],
@@ -364,8 +359,11 @@ def summarize_library(
 # Saved-cast-history summarizer (Slice Two, Section D)
 # ---------------------------------------------------------------------------
 
-def summarize_saved_casts(profile: dict | None = None,
-                          memory_enabled: bool = True) -> dict:
+def summarize_saved_casts(
+    user_id: str,
+    profile: dict | None = None,
+    memory_enabled: bool = True,
+) -> dict:
     """Derive patterns from the existing saved episode library.
 
     Reads episodes via episodes.list_episodes() — zero new scopes or API calls.
@@ -376,7 +374,7 @@ def summarize_saved_casts(profile: dict | None = None,
     Returns the updated profile dict (caller must call save_profile to persist).
     """
     if profile is None:
-        profile = load_profile()
+        profile = load_profile(user_id)
 
     from resonova import episodes as episodes_store
 
@@ -391,7 +389,7 @@ def summarize_saved_casts(profile: dict | None = None,
         "resonova": {"saved_cast_count": 0, "feedback_count": 0},
     })
 
-    eps = episodes_store.list_episodes()
+    eps = episodes_store.list_episodes(user_id)
     resonova_src = sources.setdefault("resonova", {"saved_cast_count": 0, "feedback_count": 0})
     resonova_src["saved_cast_count"] = len(eps)
 
@@ -453,8 +451,6 @@ def summarize_saved_casts(profile: dict | None = None,
 # Feedback channel (Slice Two, Section E)
 # ---------------------------------------------------------------------------
 
-_FEEDBACK_PATH = _PROFILE_DIR / "feedback.jsonl"
-
 FEEDBACK_TAGS = frozenset([
     "too long", "too shallow", "too generic",
     "wrong vibe", "good story", "good analysis",
@@ -463,20 +459,20 @@ FEEDBACK_TAGS = frozenset([
 _FEEDBACK_FOLD_THRESHOLD = 2  # occurrences before folding into high-confidence preference
 
 
-def append_feedback(event: dict) -> None:
+def append_feedback(user_id: str, event: dict) -> None:
     """Append a feedback event to feedback.jsonl (append-only)."""
-    _PROFILE_DIR.mkdir(parents=True, exist_ok=True)
-    with _FEEDBACK_PATH.open("a", encoding="utf-8") as f:
+    _profile_dir(user_id).mkdir(parents=True, exist_ok=True)
+    with _feedback_path(user_id).open("a", encoding="utf-8") as f:
         f.write(json.dumps(event) + "\n")
 
 
-def _load_feedback() -> list[dict]:
+def _load_feedback(user_id: str) -> list[dict]:
     """Load all feedback events; return [] on any error."""
-    if not _FEEDBACK_PATH.exists():
+    if not _feedback_path(user_id).exists():
         return []
     events: list[dict] = []
     try:
-        for line in _FEEDBACK_PATH.read_text(encoding="utf-8").splitlines():
+        for line in _feedback_path(user_id).read_text(encoding="utf-8").splitlines():
             line = line.strip()
             if line:
                 try:
@@ -488,7 +484,7 @@ def _load_feedback() -> list[dict]:
     return events
 
 
-def fold_feedback_into_profile(profile: dict | None = None) -> dict:
+def fold_feedback_into_profile(user_id: str, profile: dict | None = None) -> dict:
     """Read feedback.jsonl and fold repeated signals into commentary_preferences.
 
     Override precedence: pinned > feedback(high) > inferred(spotify/lastfm/saved_cast).
@@ -497,9 +493,9 @@ def fold_feedback_into_profile(profile: dict | None = None) -> dict:
     Returns the updated profile dict (caller must call save_profile to persist).
     """
     if profile is None:
-        profile = load_profile()
+        profile = load_profile(user_id)
 
-    events = _load_feedback()
+    events = _load_feedback(user_id)
     if not events:
         return profile
 
