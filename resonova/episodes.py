@@ -7,30 +7,33 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
-_EPISODES_DIR = Path("generated") / "episodes"
+def _episodes_dir(user_id: str) -> Path:
+    return Path("generated") / "users" / user_id / "episodes"
 
 
-def _ensure_dir() -> Path:
-    _EPISODES_DIR.mkdir(parents=True, exist_ok=True)
-    return _EPISODES_DIR
+def _ensure_dir(user_id: str) -> Path:
+    d = _episodes_dir(user_id)
+    d.mkdir(parents=True, exist_ok=True)
+    return d
 
 
-def _episode_dir(episode_id: str) -> Path:
-    episodes_base = _EPISODES_DIR.resolve()
-    ep_dir = (_EPISODES_DIR / episode_id).resolve()
+def _episode_dir(user_id: str, episode_id: str) -> Path:
+    base = _episodes_dir(user_id).resolve()
+    ep = (_episodes_dir(user_id) / episode_id).resolve()
     try:
-        ep_dir.relative_to(episodes_base)
+        ep.relative_to(base)
     except ValueError as exc:
         raise ValueError("Invalid episode id") from exc
-    return ep_dir
+    return ep
 
 
-def episode_audio_dir(episode_id: str) -> str:
+def episode_audio_dir(user_id: str, episode_id: str) -> str:
     """Return the relative path (from generated/) for an episode's audio files."""
-    return f"episodes/{episode_id}"
+    return f"users/{user_id}/episodes/{episode_id}"
 
 
 def save_episode(
+    user_id: str,
     episode_id: str,
     name: str,
     playlist_uri: str,
@@ -51,7 +54,7 @@ def save_episode(
     tagline            — one-line evocative tagline for share UI (optional).
     status             — "complete" for finished episodes; "quota_failed" for partial saves.
     """
-    _ensure_dir()
+    _ensure_dir(user_id)
     meta: dict = {
         "id": episode_id,
         "name": name,
@@ -71,12 +74,13 @@ def save_episode(
     if prior_cast_summary is not None:
         meta["prior_cast_summary"] = prior_cast_summary
 
-    path = _episode_dir(episode_id) / "episode.json"
+    path = _episode_dir(user_id, episode_id) / "episode.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(meta, indent=2))
 
 
 def record_replay_event(
+    user_id: str,
     episode_id: str,
     event: str,
     session_id: str,
@@ -93,7 +97,7 @@ def record_replay_event(
     if not session_id:
         raise ValueError("session_id must not be empty")
 
-    path = _episode_dir(episode_id) / "episode.json"
+    path = _episode_dir(user_id, episode_id) / "episode.json"
     if not path.exists():
         return "not_found"
 
@@ -156,13 +160,13 @@ def _public_episode(meta: dict, include_queue: bool = False) -> dict:
     return result
 
 
-def list_episodes() -> list[dict]:
+def list_episodes(user_id: str) -> list[dict]:
     """Return episode summaries (no queue), newest first, with run numbers."""
-    if not _EPISODES_DIR.exists():
+    if not _episodes_dir(user_id).exists():
         return []
 
     episodes: list[dict] = []
-    for ep_dir in _EPISODES_DIR.iterdir():
+    for ep_dir in _episodes_dir(user_id).iterdir():
         meta_path = ep_dir / "episode.json"
         if not meta_path.exists():
             continue
@@ -194,12 +198,13 @@ def list_episodes() -> list[dict]:
     return episodes
 
 
-def get_playlist_episode_count(playlist_uri: str) -> int:
+def get_playlist_episode_count(playlist_uri: str, user_id: str) -> int:
     """Return the number of saved (non-error) episodes for a given playlist URI."""
-    if not _EPISODES_DIR.exists():
+    episodes_dir = _episodes_dir(user_id)
+    if not episodes_dir.exists():
         return 0
     count = 0
-    for ep_dir in _EPISODES_DIR.iterdir():
+    for ep_dir in episodes_dir.iterdir():
         meta_path = ep_dir / "episode.json"
         if not meta_path.exists():
             continue
@@ -212,12 +217,13 @@ def get_playlist_episode_count(playlist_uri: str) -> int:
     return count
 
 
-def get_latest_playlist_episode(playlist_uri: str) -> dict | None:
+def get_latest_playlist_episode(playlist_uri: str, user_id: str) -> dict | None:
     """Return the most recently created complete episode for a playlist, or None."""
-    if not _EPISODES_DIR.exists():
+    episodes_dir = _episodes_dir(user_id)
+    if not episodes_dir.exists():
         return None
     candidates = []
-    for ep_dir in _EPISODES_DIR.iterdir():
+    for ep_dir in episodes_dir.iterdir():
         meta_path = ep_dir / "episode.json"
         if not meta_path.exists():
             continue
@@ -232,14 +238,14 @@ def get_latest_playlist_episode(playlist_uri: str) -> dict | None:
     return max(candidates, key=lambda m: m["created_at"])
 
 
-def get_episode(episode_id: str) -> dict | None:
-    path = _episode_dir(episode_id) / "episode.json"
+def get_episode(user_id: str, episode_id: str) -> dict | None:
+    path = _episode_dir(user_id, episode_id) / "episode.json"
     if not path.exists():
         return None
     return _public_episode(json.loads(path.read_text()), include_queue=True)
 
 
-def rename_episode(episode_id: str, new_name: str) -> dict | None:
+def rename_episode(user_id: str, episode_id: str, new_name: str) -> dict | None:
     """
     Rename an episode. Returns updated summary dict, or None if not found.
     Raises ValueError for invalid names.
@@ -248,7 +254,7 @@ def rename_episode(episode_id: str, new_name: str) -> dict | None:
     if not name:
         raise ValueError("Episode name must not be empty")
 
-    path = _episode_dir(episode_id) / "episode.json"
+    path = _episode_dir(user_id, episode_id) / "episode.json"
     if not path.exists():
         return None
 
@@ -259,12 +265,12 @@ def rename_episode(episode_id: str, new_name: str) -> dict | None:
     return _public_episode(meta)
 
 
-def delete_episode(episode_id: str) -> bool:
+def delete_episode(user_id: str, episode_id: str) -> bool:
     """
     Delete an episode directory. Returns True if deleted, False if not found.
-    Scoped to _EPISODES_DIR; raises ValueError on path traversal attempt.
+    Scoped to _episodes_dir; raises ValueError on path traversal attempt.
     """
-    ep_dir = _episode_dir(episode_id)
+    ep_dir = _episode_dir(user_id, episode_id)
     if not ep_dir.exists():
         return False
 

@@ -9,7 +9,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-_VARIETY_DIR = Path("generated") / "variety"
 _MAX_RECENT = 5
 _NUM_CANDIDATES = 20
 
@@ -31,12 +30,13 @@ def compute_fingerprint(track_uris: list[str]) -> str:
     return hashlib.sha1("|".join(track_uris).encode()).hexdigest()[:8]
 
 
-def _variety_path(playlist_uri: str) -> Path:
-    return _VARIETY_DIR / f"{_safe_playlist_key(playlist_uri)}.json"
+def _variety_path(playlist_uri: str, user_id: str) -> Path:
+    user_dir = Path("generated") / "users" / user_id / "variety"
+    return user_dir / f"{_safe_playlist_key(playlist_uri)}.json"
 
 
-def load_variety_memory(playlist_uri: str) -> dict:
-    path = _variety_path(playlist_uri)
+def load_variety_memory(playlist_uri: str, user_id: str) -> dict:
+    path = _variety_path(playlist_uri, user_id)
     if not path.exists():
         return {"playlist_uri": playlist_uri, "recent_orders": []}
     try:
@@ -45,10 +45,11 @@ def load_variety_memory(playlist_uri: str) -> dict:
         return {"playlist_uri": playlist_uri, "recent_orders": []}
 
 
-def save_variety_memory(playlist_uri: str, selected_uris: list[str]) -> None:
+def save_variety_memory(playlist_uri: str, user_id: str, selected_uris: list[str]) -> None:
     """Persist a selected order to memory. Call after successful episode save."""
-    _VARIETY_DIR.mkdir(parents=True, exist_ok=True)
-    memory = load_variety_memory(playlist_uri)
+    path = _variety_path(playlist_uri, user_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    memory = load_variety_memory(playlist_uri, user_id)
     recent = memory.get("recent_orders", [])
     recent.append({
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -56,7 +57,7 @@ def save_variety_memory(playlist_uri: str, selected_uris: list[str]) -> None:
         "fingerprint": compute_fingerprint(selected_uris),
     })
     memory["recent_orders"] = recent[-_MAX_RECENT:]
-    _variety_path(playlist_uri).write_text(json.dumps(memory, indent=2))
+    path.write_text(json.dumps(memory, indent=2))
 
 
 def _score_candidate(
@@ -147,6 +148,7 @@ def select_tracks_for_episode(
     tracks: list[Any],
     playlist_uri: str,
     max_tracks: int,
+    user_id: str,
     taste: dict | None = None,
 ) -> list[Any]:
     """
@@ -163,7 +165,7 @@ def select_tracks_for_episode(
         return []
 
     tracks_by_uri: dict[str, Any] = {t.uri: t for t in tracks}
-    memory = load_variety_memory(playlist_uri)
+    memory = load_variety_memory(playlist_uri, user_id)
     recent_orders = memory.get("recent_orders", [])
 
     recent_fingerprints = {o["fingerprint"] for o in recent_orders if o.get("fingerprint")}

@@ -58,6 +58,9 @@ class Settings(BaseSettings):
     # When True, the default redirect_uri (and tunnel auto-detection) use https://.
     use_https: bool = Field(default=False, validation_alias="USE_HTTPS")
 
+    session_secret_key: str = "change-me-in-production"
+    allowed_spotify_user_ids: str = ""   # comma-separated Spotify user IDs; empty = no allowlist
+
     @property
     def redirect_uri(self) -> str:
         if self.redirect_uri_override:

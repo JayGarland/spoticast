@@ -46,6 +46,9 @@ app.mount("/audio", StaticFiles(directory=str(_GENERATED_DIR)), name="audio")
 _WEB_DIR = Path(__file__).parent / "web"
 app.mount("/web", StaticFiles(directory=str(_WEB_DIR)), name="web")
 
+from starlette.middleware.sessions import SessionMiddleware
+app.add_middleware(SessionMiddleware, secret_key=settings.session_secret_key)
+
 
 # ---------------------------------------------------------------------------
 # Cast summary extraction for prior-cast context injection
@@ -94,6 +97,7 @@ class Job:
         self.job_id = job_id
         self.playlist_uri = playlist_uri
         self.playlist_name: str = ""
+        self.user_id: str = ""
         self.track_uris: list[str] | None = None
         self.incognito: bool = False
         self.commentary_language: str | None = None
@@ -181,14 +185,27 @@ def _set_tts_cooldown(retry_after_seconds: int | None, model: str | None = None)
     logger.info("TTS quota cooldown set: %.0fs (until %s)", secs, _tts_cooldown_until)
 
 
-def _select_playlist_tracks_for_episode(tracks: list[Any], playlist_uri: str) -> list[Any]:
+async def get_current_user(request: Request) -> tuple[str, "spotipy.Spotify"]:
+    """Validate session, refresh token if needed, bind per-session Spotify client."""
+    token_info = request.session.get("token_info")
+    if not token_info:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    token_info = spotify_api.refresh_token_if_needed(token_info)
+    request.session["token_info"] = token_info
+    user_id: str = request.session["user_id"]
+    sp = spotify_api.get_client_from_token(token_info)
+    spotify_api.set_session_client(sp)
+    return user_id, sp
+
+
+def _select_playlist_tracks_for_episode(tracks: list[Any], playlist_uri: str, user_id: str) -> list[Any]:
     """Return a memory-aware varied episode order from a playlist.
 
     When a durable taste profile exists, build an artist-affinity set and pass
     it as a soft bias — the order remains non-deterministic but favours the
     listener's known artists.
     """
-    profile = profile_store.load_profile()
+    profile = profile_store.load_profile(user_id)
     taste_profile = profile.get("taste_profile") or {}
 
     artists: list[str] = []
@@ -203,35 +220,25 @@ def _select_playlist_tracks_for_episode(tracks: list[Any], playlist_uri: str) ->
         taste = None  # No profile data → identical to today's behaviour
 
     return variety_store.select_tracks_for_episode(
-        tracks, playlist_uri, settings.max_tracks, taste=taste,
+        tracks, playlist_uri, settings.max_tracks, user_id=user_id, taste=taste,
     )
 
 
-async def _auto_refresh_profile_on_connect() -> None:
+async def _auto_refresh_profile_on_connect(user_id: str) -> None:
     """Non-blocking: populate profile from library after connect, if profile is empty."""
     try:
-        profile = profile_store.load_profile()
-        # Only auto-refresh if no Spotify-derived content yet
+        profile = profile_store.load_profile(user_id)
         spotify_src = profile.get("sources", {}).get("spotify", {})
         if spotify_src.get("connected") and profile_store.profile_has_content(profile):
             return
         loop = asyncio.get_event_loop()
-        # Single-user guard: the first connect claims ownership; a different
-        # account must not auto-populate (and merge into) the owner's profile.
-        owner_uid = await loop.run_in_executor(None, spotify_api.current_user_id)
-        if not profile_store.claim_or_check_owner(owner_uid):
-            logger.warning(
-                "Foreign Spotify account %s connected — skipping profile auto-refresh (single-user guard)",
-                owner_uid,
-            )
-            return
         saved_tracks = await loop.run_in_executor(None, spotify_api.fetch_saved_tracks)
         followed_artists = await loop.run_in_executor(None, spotify_api.fetch_followed_artists)
-        profile = profile_store.summarize_library(saved_tracks, followed_artists, profile)
-        profile = profile_store.summarize_saved_casts(profile)
-        profile = profile_store.fold_feedback_into_profile(profile)
-        profile_store.save_profile(profile)
-        logger.info("Auto-refreshed profile from Spotify library on connect")
+        profile = profile_store.summarize_library(user_id, saved_tracks, followed_artists, profile)
+        profile = profile_store.summarize_saved_casts(user_id, profile)
+        profile = profile_store.fold_feedback_into_profile(user_id, profile)
+        profile_store.save_profile(user_id, profile)
+        logger.info("Auto-refreshed profile for user %s on connect", user_id)
     except Exception as exc:
         logger.warning("Auto-refresh profile on connect failed (non-blocking): %s", exc)
 
@@ -282,21 +289,33 @@ async def auth_spotify(request: Request):
 @app.get("/auth/callback")
 async def auth_callback(request: Request, code: str | None = None, error: str | None = None):
     if error or not code:
-        return HTMLResponse(
-            f"<h1>Auth failed</h1><p>{error}</p>", status_code=400
-        )
-    spotify_api.handle_callback(code, _resolve_redirect_uri(request))
-    # Auto-refresh profile from library if no Spotify-derived content yet (non-blocking)
-    asyncio.create_task(_auto_refresh_profile_on_connect())
+        return HTMLResponse(f"<h1>Auth failed</h1><p>{error}</p>", status_code=400)
+    token_info = spotify_api.handle_callback_for_session(code, _resolve_redirect_uri(request))
+    sp = spotify_api.get_client_from_token(token_info)
+    spotify_api.set_session_client(sp)
+    loop = asyncio.get_event_loop()
+    me = await loop.run_in_executor(None, sp.me)
+    user_id: str = me["id"]
+    allowed_raw = settings.allowed_spotify_user_ids.strip()
+    if allowed_raw:
+        allowed_ids = {uid.strip() for uid in allowed_raw.split(",") if uid.strip()}
+        if user_id not in allowed_ids:
+            return HTMLResponse(
+                "<h1>Not invited</h1><p>This beta is private. Ask the host to add you.</p>",
+                status_code=403,
+            )
+    request.session["token_info"] = token_info
+    request.session["user_id"] = user_id
+    asyncio.create_task(_auto_refresh_profile_on_connect(user_id))
     return RedirectResponse("/?auth=success")
 
 
 @app.get("/auth/token")
-async def auth_token():
-    token = spotify_api.get_current_token()
-    if token is None:
+async def auth_token(request: Request):
+    token_info = request.session.get("token_info")
+    if token_info is None:
         return JSONResponse({"token": None, "authenticated": False})
-    return JSONResponse({"token": token, "authenticated": True})
+    return JSONResponse({"token": token_info.get("access_token"), "authenticated": True})
 
 
 @app.get("/auth/lastfm/status")
@@ -325,10 +344,8 @@ async def lastfm_disconnect():
 
 
 @app.get("/api/recent")
-async def api_recent():
-    token = spotify_api.get_current_token()
-    if token is None:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+async def api_recent(request: Request):
+    user_id, sp = await get_current_user(request)
     loop = asyncio.get_event_loop()
     playlists = await loop.run_in_executor(None, spotify_api.fetch_recent_plays)
     return JSONResponse({"playlists": playlists})
@@ -336,10 +353,8 @@ async def api_recent():
 
 
 @app.get("/api/playlists")
-async def api_playlists(limit: int = 50, offset: int = 0):
-    token = spotify_api.get_current_token()
-    if token is None:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+async def api_playlists(request: Request, limit: int = 50, offset: int = 0):
+    user_id, sp = await get_current_user(request)
     loop = asyncio.get_event_loop()
     result = await loop.run_in_executor(
         None, lambda: spotify_api.fetch_user_playlists(limit, offset)
@@ -348,8 +363,9 @@ async def api_playlists(limit: int = 50, offset: int = 0):
 
 
 @app.get("/api/episodes")
-async def api_episodes():
-    return JSONResponse({"episodes": episodes_store.list_episodes()})
+async def api_episodes(request: Request):
+    user_id, sp = await get_current_user(request)
+    return JSONResponse({"episodes": episodes_store.list_episodes(user_id)})
 
 
 @app.get("/api/tts-cooldown")
@@ -362,9 +378,10 @@ async def api_tts_cooldown():
 
 
 @app.get("/api/episodes/{episode_id}")
-async def api_episode(episode_id: str):
+async def api_episode(episode_id: str, request: Request):
+    user_id, sp = await get_current_user(request)
     try:
-        ep = episodes_store.get_episode(episode_id)
+        ep = episodes_store.get_episode(user_id, episode_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     if ep is None:
@@ -377,9 +394,10 @@ class RenameEpisodeRequest(BaseModel):
 
 
 @app.patch("/api/episodes/{episode_id}")
-async def api_rename_episode(episode_id: str, req: RenameEpisodeRequest):
+async def api_rename_episode(episode_id: str, req: RenameEpisodeRequest, request: Request):
+    user_id, sp = await get_current_user(request)
     try:
-        updated = episodes_store.rename_episode(episode_id, req.name)
+        updated = episodes_store.rename_episode(user_id, episode_id, req.name)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     if updated is None:
@@ -388,9 +406,10 @@ async def api_rename_episode(episode_id: str, req: RenameEpisodeRequest):
 
 
 @app.delete("/api/episodes/{episode_id}")
-async def api_delete_episode(episode_id: str):
+async def api_delete_episode(episode_id: str, request: Request):
+    user_id, sp = await get_current_user(request)
     try:
-        deleted = episodes_store.delete_episode(episode_id)
+        deleted = episodes_store.delete_episode(user_id, episode_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     if not deleted:
@@ -406,8 +425,9 @@ class ReplayRequest(BaseModel):
 
 
 @app.post("/api/episodes/{episode_id}/replay")
-async def api_replay_episode(episode_id: str, req: ReplayRequest):
+async def api_replay_episode(episode_id: str, req: ReplayRequest, request: Request):
     """Record a replay start or meaningful-completion event for a saved episode."""
+    user_id, sp = await get_current_user(request)
     if req.event not in ("start", "meaningful"):
         raise HTTPException(status_code=400, detail="event must be 'start' or 'meaningful'")
     if not req.session_id:
@@ -416,6 +436,7 @@ async def api_replay_episode(episode_id: str, req: ReplayRequest):
         raise HTTPException(status_code=400, detail="segment counts must be non-negative")
     try:
         result = episodes_store.record_replay_event(
+            user_id,
             episode_id,
             req.event,
             req.session_id,
@@ -430,15 +451,17 @@ async def api_replay_episode(episode_id: str, req: ReplayRequest):
 
 
 @app.get("/api/profile")
-async def api_get_profile():
+async def api_get_profile(request: Request):
     """Return the current listener profile (memory layer)."""
-    return JSONResponse(profile_store.load_profile())
+    user_id, sp = await get_current_user(request)
+    return JSONResponse(profile_store.load_profile(user_id))
 
 
 @app.delete("/api/profile")
-async def api_delete_profile():
+async def api_delete_profile(request: Request):
     """Reset the listener profile to an empty skeleton; saved casts are untouched."""
-    empty = profile_store.reset_profile()
+    user_id, sp = await get_current_user(request)
+    empty = profile_store.reset_profile(user_id)
     return JSONResponse(empty)
 
 
@@ -450,9 +473,10 @@ class ProfilePatchRequest(BaseModel):
 
 
 @app.patch("/api/profile")
-async def api_patch_profile(req: ProfilePatchRequest):
+async def api_patch_profile(req: ProfilePatchRequest, request: Request):
     """Patch memory_enabled, pin a memory, or delete a memory."""
-    profile = profile_store.load_profile()
+    user_id, sp = await get_current_user(request)
+    profile = profile_store.load_profile(user_id)
     if req.memory_enabled is not None:
         profile = profile_store.set_memory_enabled(profile, req.memory_enabled)
     if req.pin_memory_id is not None:
@@ -460,34 +484,25 @@ async def api_patch_profile(req: ProfilePatchRequest):
         profile = profile_store.pin_memory(profile, req.pin_memory_id, pinned)
     if req.delete_memory_id is not None:
         profile = profile_store.delete_memory(profile, req.delete_memory_id)
-    profile_store.save_profile(profile)
+    profile_store.save_profile(user_id, profile)
     return JSONResponse(profile)
 
 
 @app.post("/api/profile/refresh")
-async def api_profile_refresh():
+async def api_profile_refresh(request: Request):
     """Fetch saved tracks + followed artists, update the profile. No cast generated."""
-    token = spotify_api.get_current_token()
-    if token is None:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+    user_id, sp = await get_current_user(request)
     loop = asyncio.get_event_loop()
-    # Single-user guard (raised before the try so it isn't masked as a 500).
-    owner_uid = await loop.run_in_executor(None, spotify_api.current_user_id)
-    if not profile_store.claim_or_check_owner(owner_uid):
-        raise HTTPException(
-            status_code=403,
-            detail="This instance is locked to its owner account (single-user mode).",
-        )
     try:
         saved_tracks, followed_artists = await asyncio.gather(
             loop.run_in_executor(None, spotify_api.fetch_saved_tracks),
             loop.run_in_executor(None, spotify_api.fetch_followed_artists),
         )
-        profile = profile_store.load_profile()
-        profile = profile_store.summarize_library(saved_tracks, followed_artists, profile)
-        profile = profile_store.summarize_saved_casts(profile)
-        profile = profile_store.fold_feedback_into_profile(profile)
-        profile_store.save_profile(profile)
+        profile = profile_store.load_profile(user_id)
+        profile = profile_store.summarize_library(user_id, saved_tracks, followed_artists, profile)
+        profile = profile_store.summarize_saved_casts(user_id, profile)
+        profile = profile_store.fold_feedback_into_profile(user_id, profile)
+        profile_store.save_profile(user_id, profile)
         return JSONResponse(profile)
     except Exception as exc:
         logger.exception("Profile refresh failed")
@@ -503,8 +518,9 @@ class FeedbackRequest(BaseModel):
 
 
 @app.post("/api/feedback")
-async def api_feedback(req: FeedbackRequest):
+async def api_feedback(req: FeedbackRequest, request: Request):
     """Record feedback for an episode and fold into profile preferences."""
+    user_id, sp = await get_current_user(request)
     if req.verdict not in ("up", "down"):
         raise HTTPException(status_code=400, detail="verdict must be 'up' or 'down'")
     valid_tags = [t for t in req.tags if t in profile_store.FEEDBACK_TAGS]
@@ -518,13 +534,13 @@ async def api_feedback(req: FeedbackRequest):
         "note": req.note,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
-    profile_store.append_feedback(event)
+    profile_store.append_feedback(user_id, event)
 
     # Fold into profile (non-blocking on error)
     try:
-        profile = profile_store.load_profile()
-        profile = profile_store.fold_feedback_into_profile(profile)
-        profile_store.save_profile(profile)
+        profile = profile_store.load_profile(user_id)
+        profile = profile_store.fold_feedback_into_profile(user_id, profile)
+        profile_store.save_profile(user_id, profile)
     except Exception as fe:
         logger.warning("Feedback fold failed (non-blocking): %s", fe)
 
@@ -541,10 +557,8 @@ class GenerateRequest(BaseModel):
 
 
 @app.post("/generate")
-async def generate(req: GenerateRequest):
-    token = spotify_api.get_current_token()
-    if token is None:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+async def generate(req: GenerateRequest, request: Request):
+    user_id, sp = await get_current_user(request)
     if not req.playlist_uri and not req.track_uris:
         raise HTTPException(status_code=400, detail="Provide playlist_uri or track_uris")
 
@@ -556,6 +570,7 @@ async def generate(req: GenerateRequest):
     job_id = str(uuid7())
     source = req.playlist_uri or "track_list"
     job = Job(job_id, source)
+    job.user_id = user_id
     job.track_uris = req.track_uris
     job.incognito = req.incognito
     if req.commentary_language:
@@ -652,7 +667,7 @@ async def _run_generation(job: Job):
                 loop.run_in_executor(None, spotify_api.fetch_playlist, job.playlist_uri),
                 loop.run_in_executor(None, spotify_api.fetch_playlist_name, job.playlist_uri),
             )
-            tracks = _select_playlist_tracks_for_episode(tracks, job.playlist_uri)
+            tracks = _select_playlist_tracks_for_episode(tracks, job.playlist_uri, job.user_id)
             _playlist_selected_uris = [t.uri for t in tracks]
             _order_fingerprint = variety_store.compute_fingerprint(_playlist_selected_uris)
             _track_order_preview = [f"{t.artist} – {t.name}" for t in tracks[:3]]
@@ -726,22 +741,22 @@ async def _run_generation(job: Job):
         # Omitted entirely for incognito casts (no personalization at all).
         if not job.incognito:
             try:
-                _prompt_profile = profile_store.load_profile()
+                _prompt_profile = profile_store.load_profile(job.user_id)
                 context["persistent_profile"] = _prompt_profile
             except Exception as _pe:
                 logger.warning("Could not load profile for prompt: %s", _pe)
 
         # Prior-cast context for cache-busting and prompt enrichment
-        _prior_count = episodes_store.get_playlist_episode_count(job.playlist_uri) if job.playlist_uri else 0
+        _prior_count = episodes_store.get_playlist_episode_count(job.playlist_uri, job.user_id) if job.playlist_uri else 0
         context["prior_cast_count"] = _prior_count
         if _prior_count > 0 and job.playlist_uri:
-            _latest = episodes_store.get_latest_playlist_episode(job.playlist_uri)
+            _latest = episodes_store.get_latest_playlist_episode(job.playlist_uri, job.user_id)
             if _latest:
                 if _latest.get("prior_cast_summary"):
                     context["prior_cast_summary"] = _latest["prior_cast_summary"]
                 context["prior_cast_replay_count"] = _latest.get("replay_count", 0)
                 if _latest.get("id"):
-                    _ep_feedback = profile_store.get_episode_feedback(_latest["id"])
+                    _ep_feedback = profile_store.get_episode_feedback(job.user_id, _latest["id"])
                     if _ep_feedback:
                         context["prior_cast_feedback"] = _ep_feedback
 
@@ -757,7 +772,7 @@ async def _run_generation(job: Job):
 
         job.push("progress", {"step": "tts", "message": "Synthesizing intro audio..."})
 
-        ep_dir = episodes_store.episode_audio_dir(episode_id)
+        ep_dir = episodes_store.episode_audio_dir(job.user_id, episode_id)
         saved_queue: list[dict] = []
         tracks_by_uri = {t.uri: t for t in tracks}
         total_tracks = len(script["tracks"])
@@ -825,6 +840,7 @@ async def _run_generation(job: Job):
 
         # Persist episode for future playback
         episodes_store.save_episode(
+            user_id=job.user_id,
             episode_id=episode_id,
             name=episode_name,
             playlist_uri=job.playlist_uri,
@@ -839,7 +855,7 @@ async def _run_generation(job: Job):
 
         # Persist variety memory only after successful save (playlist episodes only)
         if _playlist_selected_uris and job.playlist_uri:
-            variety_store.save_variety_memory(job.playlist_uri, _playlist_selected_uris)
+            variety_store.save_variety_memory(job.playlist_uri, job.user_id, _playlist_selected_uris)
 
         # Update persistent listener profile (Slice One: context summariser).
         # Slice Two: also run saved-cast + feedback summarizers.
@@ -849,21 +865,16 @@ async def _run_generation(job: Job):
         # Must NOT block or fail generation.
         if not job.incognito:
             try:
-                # Single-user guard: only the owner account updates the profile.
-                _owner_uid = await asyncio.get_event_loop().run_in_executor(
-                    None, spotify_api.current_user_id
-                )
-                _profile = profile_store.load_profile()
+                _profile = profile_store.load_profile(job.user_id)
                 _memory_enabled = _profile.get("memory_enabled", True)
-                if profile_store.claim_or_check_owner(_owner_uid):
-                    _profile = profile_store.summarize_context(
-                        context, _profile, memory_enabled=_memory_enabled
-                    )
-                    _profile = profile_store.summarize_saved_casts(
-                        _profile, memory_enabled=_memory_enabled
-                    )
-                    _profile = profile_store.fold_feedback_into_profile(_profile)
-                    profile_store.save_profile(_profile)
+                _profile = profile_store.summarize_context(
+                    context, _profile, memory_enabled=_memory_enabled
+                )
+                _profile = profile_store.summarize_saved_casts(
+                    job.user_id, _profile, memory_enabled=_memory_enabled
+                )
+                _profile = profile_store.fold_feedback_into_profile(job.user_id, _profile)
+                profile_store.save_profile(job.user_id, _profile)
             except Exception as _profile_exc:
                 logger.warning("Profile update failed (non-blocking): %s", _profile_exc)
 
@@ -878,6 +889,7 @@ async def _run_generation(job: Job):
         if saved_queue:
             try:
                 episodes_store.save_episode(
+                    user_id=job.user_id,
                     episode_id=episode_id,
                     name=episode_name,
                     playlist_uri=job.playlist_uri,
@@ -912,6 +924,7 @@ async def _run_generation(job: Job):
                 # episode_name / total_tracks are always set before TTS starts,
                 # which is when saved_queue becomes non-empty.
                 episodes_store.save_episode(
+                    user_id=job.user_id,
                     episode_id=episode_id,
                     name=episode_name,
                     playlist_uri=job.playlist_uri,

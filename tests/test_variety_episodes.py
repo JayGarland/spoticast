@@ -9,6 +9,7 @@ No Spotify / Gemini network calls required.
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 from dataclasses import dataclass
@@ -29,7 +30,14 @@ class FakeTrack:
 
 
 # ---------------------------------------------------------------------------
-# Patch variety._VARIETY_DIR and episodes._EPISODES_DIR to a temp dir
+# Test user id — all path helpers are now per-user
+# ---------------------------------------------------------------------------
+
+TEST_USER_ID = "test_user"
+
+
+# ---------------------------------------------------------------------------
+# Run all tests inside a temp dir (path helpers use Path("generated/..."))
 # ---------------------------------------------------------------------------
 
 def _run_tests() -> None:
@@ -37,36 +45,41 @@ def _run_tests() -> None:
     import resonova.episodes as episodes
 
     with tempfile.TemporaryDirectory() as tmp:
-        tmp_path = Path(tmp)
-        variety._VARIETY_DIR = tmp_path / "variety"
-        episodes._EPISODES_DIR = tmp_path / "episodes"
+        tmp_path = Path(tmp).resolve()
 
-        _test_fingerprint_stable()
-        _test_select_produces_variety(variety)
-        _test_select_short_playlist(variety)
-        _test_pasted_track_order_not_affected()
-        _test_save_variety_memory(variety)
-        _test_episodes_lifecycle(episodes)
-        _test_episodes_backward_compat(episodes)
-        _test_run_number(episodes)
-        _test_replay_event_counts(episodes)
-        _test_episode_path_traversal_rejected(episodes)
-        _test_server_track_ready_metadata_shape()
-        _test_quota_error_classification()
-        _test_retry_after_formatting()
-        _test_failed_episode_save(episodes)
-        _test_generate_route_accepts_json_body()
-        _test_playlist_card_quick_generate()
-        _test_replay_tracking_frontend_shape()
-        _test_mobile_hidden_spotify_attempts_before_deferring()
-        _test_cooldown_guard_in_server()
-        _test_taste_bias_works(variety)
-        _test_taste_still_varied(variety)
-        _test_no_taste_unchanged(variety)
-        _test_episode_tagline_roundtrip(episodes)
-        _test_episode_tagline_backward_compat(episodes)
-        _test_parse_episode_identity_two_lines()
-        _test_parse_episode_identity_one_line()
+        # Change CWD to the temp dir so Path("generated") resolves inside it
+        original_cwd = os.getcwd()
+        os.chdir(str(tmp_path))
+
+        try:
+            _test_fingerprint_stable()
+            _test_select_produces_variety(variety)
+            _test_select_short_playlist(variety)
+            _test_pasted_track_order_not_affected()
+            _test_save_variety_memory(variety)
+            _test_episodes_lifecycle(episodes)
+            _test_episodes_backward_compat(episodes)
+            _test_run_number(episodes)
+            _test_replay_event_counts(episodes)
+            _test_episode_path_traversal_rejected(episodes)
+            _test_server_track_ready_metadata_shape()
+            _test_quota_error_classification()
+            _test_retry_after_formatting()
+            _test_failed_episode_save(episodes)
+            _test_generate_route_accepts_json_body()
+            _test_playlist_card_quick_generate()
+            _test_replay_tracking_frontend_shape()
+            _test_mobile_hidden_spotify_attempts_before_deferring()
+            _test_cooldown_guard_in_server()
+            _test_taste_bias_works(variety)
+            _test_taste_still_varied(variety)
+            _test_no_taste_unchanged(variety)
+            _test_episode_tagline_roundtrip(episodes)
+            _test_episode_tagline_backward_compat(episodes)
+            _test_parse_episode_identity_two_lines()
+            _test_parse_episode_identity_one_line()
+        finally:
+            os.chdir(original_cwd)
 
     print("All tests passed ✓")
 
@@ -76,6 +89,7 @@ def _test_episode_tagline_roundtrip(episodes):
     ep_id = "tagline-test-001"
     queue = [{"type": "audio", "url": "/audio/ep/intro.mp3"}]
     episodes.save_episode(
+        user_id=TEST_USER_ID,
         episode_id=ep_id,
         name="Test Episode",
         tagline="Late-night soul for the long drive home",
@@ -84,23 +98,23 @@ def _test_episode_tagline_roundtrip(episodes):
         track_count=5,
         queue=queue,
     )
-    ep = episodes.get_episode(ep_id)
+    ep = episodes.get_episode(TEST_USER_ID, ep_id)
     assert ep is not None
     assert ep["tagline"] == "Late-night soul for the long drive home", f"Expected tagline, got {ep.get('tagline')}"
 
-    lst = episodes.list_episodes()
+    lst = episodes.list_episodes(TEST_USER_ID)
     found = next((e for e in lst if e["id"] == ep_id), None)
     assert found is not None
     assert found["tagline"] == "Late-night soul for the long drive home", f"Listed tagline mismatch: {found.get('tagline')}"
 
-    episodes.delete_episode(ep_id)
+    episodes.delete_episode(TEST_USER_ID, ep_id)
     print("  episode_tagline_roundtrip ✓")
 
 
 def _test_episode_tagline_backward_compat(episodes):
     """Old episodes without tagline must still load with tagline=None."""
     ep_id = "old-no-tagline"
-    ep_dir = episodes._EPISODES_DIR / ep_id
+    ep_dir = Path("generated") / "users" / TEST_USER_ID / "episodes" / ep_id
     ep_dir.mkdir(parents=True, exist_ok=True)
     old_meta = {
         "id": ep_id,
@@ -113,16 +127,16 @@ def _test_episode_tagline_backward_compat(episodes):
     }
     (ep_dir / "episode.json").write_text(json.dumps(old_meta))
 
-    lst = episodes.list_episodes()
+    lst = episodes.list_episodes(TEST_USER_ID)
     found = next((e for e in lst if e["id"] == ep_id), None)
     assert found is not None, "Old episode must appear in list"
     assert found.get("tagline") is None, "tagline should be None for old episodes without it"
 
-    ep = episodes.get_episode(ep_id)
+    ep = episodes.get_episode(TEST_USER_ID, ep_id)
     assert ep is not None
     assert ep.get("tagline") is None, "tagline should be None via get_episode too"
 
-    episodes.delete_episode(ep_id)
+    episodes.delete_episode(TEST_USER_ID, ep_id)
     print("  episode_tagline_backward_compat ✓")
 
 
@@ -165,11 +179,11 @@ def _test_select_produces_variety(variety):
 
     seen_fingerprints = set()
     for _ in range(6):
-        selected = variety.select_tracks_for_episode(tracks, playlist_uri, max_tracks)
+        selected = variety.select_tracks_for_episode(tracks, playlist_uri, max_tracks, user_id=TEST_USER_ID)
         assert len(selected) == max_tracks, f"Expected {max_tracks} tracks, got {len(selected)}"
         fp = variety.compute_fingerprint([t.uri for t in selected])
         seen_fingerprints.add(fp)
-        variety.save_variety_memory(playlist_uri, [t.uri for t in selected])
+        variety.save_variety_memory(playlist_uri, TEST_USER_ID, [t.uri for t in selected])
 
     # After 6 runs we expect at least 3 distinct orders (20 tracks >> 8, many combos possible)
     assert len(seen_fingerprints) >= 3, (
@@ -183,8 +197,8 @@ def _test_select_short_playlist(variety):
     tracks = [FakeTrack(f"spotify:track:x{i}", "ArtistA", "AlbumA") for i in range(3)]
     playlist_uri = "spotify:playlist:short"
     for _ in range(10):
-        variety.save_variety_memory(playlist_uri, [t.uri for t in tracks])  # fill memory
-    selected = variety.select_tracks_for_episode(tracks, playlist_uri, 5)
+        variety.save_variety_memory(playlist_uri, TEST_USER_ID, [t.uri for t in tracks])  # fill memory
+    selected = variety.select_tracks_for_episode(tracks, playlist_uri, 5, user_id=TEST_USER_ID)
     assert len(selected) <= 3, "Should return all available tracks (3) not 5"
     print("  select_short_playlist ✓")
 
@@ -210,15 +224,15 @@ def _test_save_variety_memory(variety):
     playlist_uri = "spotify:playlist:memtest"
     uris_a = [f"spotify:track:a{i}" for i in range(5)]
 
-    variety.save_variety_memory(playlist_uri, uris_a)
-    mem = variety.load_variety_memory(playlist_uri)
+    variety.save_variety_memory(playlist_uri, TEST_USER_ID, uris_a)
+    mem = variety.load_variety_memory(playlist_uri, TEST_USER_ID)
     assert len(mem["recent_orders"]) == 1
     assert mem["recent_orders"][0]["track_uris"] == uris_a
 
     # Fill to max + 2 and confirm cap
     for i in range(variety._MAX_RECENT + 2):
-        variety.save_variety_memory(playlist_uri, [f"spotify:track:cap{i}_{j}" for j in range(3)])
-    mem = variety.load_variety_memory(playlist_uri)
+        variety.save_variety_memory(playlist_uri, TEST_USER_ID, [f"spotify:track:cap{i}_{j}" for j in range(3)])
+    mem = variety.load_variety_memory(playlist_uri, TEST_USER_ID)
     assert len(mem["recent_orders"]) == variety._MAX_RECENT, (
         f"Expected {variety._MAX_RECENT} orders, got {len(mem['recent_orders'])}"
     )
@@ -229,6 +243,7 @@ def _test_episodes_lifecycle(episodes):
     ep_id = "test-ep-001"
     queue = [{"type": "audio", "url": "/audio/ep/intro.mp3"}]
     episodes.save_episode(
+        user_id=TEST_USER_ID,
         episode_id=ep_id,
         name="Test Episode",
         playlist_uri="spotify:playlist:abc",
@@ -239,31 +254,31 @@ def _test_episodes_lifecycle(episodes):
         track_order_preview=["Artist A – Track 1", "Artist B – Track 2"],
     )
 
-    ep = episodes.get_episode(ep_id)
+    ep = episodes.get_episode(TEST_USER_ID, ep_id)
     assert ep is not None
     assert ep["name"] == "Test Episode"
     assert ep["order_fingerprint"] == "abc12345"
     assert ep["track_order_preview"][0] == "Artist A – Track 1"
 
     # List episodes
-    lst = episodes.list_episodes()
+    lst = episodes.list_episodes(TEST_USER_ID)
     assert any(e["id"] == ep_id for e in lst)
     found = next(e for e in lst if e["id"] == ep_id)
     assert found["order_fingerprint"] == "abc12345"
     assert found["track_order_preview"] == ["Artist A – Track 1", "Artist B – Track 2"]
 
     # Rename
-    updated = episodes.rename_episode(ep_id, "  Renamed Episode  ")
+    updated = episodes.rename_episode(TEST_USER_ID, ep_id, "  Renamed Episode  ")
     assert updated is not None
     assert updated["name"] == "Renamed Episode"
-    ep2 = episodes.get_episode(ep_id)
+    ep2 = episodes.get_episode(TEST_USER_ID, ep_id)
     assert ep2["name"] == "Renamed Episode"
 
     # Delete
-    deleted = episodes.delete_episode(ep_id)
+    deleted = episodes.delete_episode(TEST_USER_ID, ep_id)
     assert deleted is True
-    assert episodes.get_episode(ep_id) is None
-    deleted_again = episodes.delete_episode(ep_id)
+    assert episodes.get_episode(TEST_USER_ID, ep_id) is None
+    deleted_again = episodes.delete_episode(TEST_USER_ID, ep_id)
     assert deleted_again is False
 
     print("  episodes_lifecycle ✓")
@@ -272,7 +287,7 @@ def _test_episodes_lifecycle(episodes):
 def _test_episodes_backward_compat(episodes):
     """Old episodes without new fields must still load and list without error."""
     ep_id = "old-ep-001"
-    ep_dir = episodes._EPISODES_DIR / ep_id
+    ep_dir = Path("generated") / "users" / TEST_USER_ID / "episodes" / ep_id
     ep_dir.mkdir(parents=True, exist_ok=True)
     old_meta = {
         "id": ep_id,
@@ -285,7 +300,7 @@ def _test_episodes_backward_compat(episodes):
     }
     (ep_dir / "episode.json").write_text(json.dumps(old_meta))
 
-    lst = episodes.list_episodes()
+    lst = episodes.list_episodes(TEST_USER_ID)
     found = next((e for e in lst if e["id"] == ep_id), None)
     assert found is not None, "Old episode must appear in list"
     assert found.get("order_fingerprint") is None, "order_fingerprint should be None for old episodes"
@@ -302,6 +317,7 @@ def _test_run_number(episodes):
     playlist_uri = "spotify:playlist:runtest"
     for i in range(3):
         episodes.save_episode(
+            user_id=TEST_USER_ID,
             episode_id=f"run-ep-{i:03d}",
             name=f"Run {i}",
             playlist_uri=playlist_uri,
@@ -313,6 +329,7 @@ def _test_run_number(episodes):
         time.sleep(0.01)  # ensure distinct created_at timestamps
     # Also add an episode from a different playlist
     episodes.save_episode(
+        user_id=TEST_USER_ID,
         episode_id="run-ep-other",
         name="Other",
         playlist_uri="spotify:playlist:other",
@@ -321,7 +338,7 @@ def _test_run_number(episodes):
         queue=[],
     )
 
-    lst = episodes.list_episodes()
+    lst = episodes.list_episodes(TEST_USER_ID)
     run_eps = sorted(
         [e for e in lst if e["playlist_uri"] == playlist_uri],
         key=lambda e: e["created_at"],
@@ -338,6 +355,7 @@ def _test_replay_event_counts(episodes):
     """Replay events should dedupe by session and count only meaningful listens."""
     ep_id = "replay-ep-001"
     episodes.save_episode(
+        user_id=TEST_USER_ID,
         episode_id=ep_id,
         name="Replay Test",
         playlist_uri="spotify:playlist:replay",
@@ -346,31 +364,31 @@ def _test_replay_event_counts(episodes):
         queue=[{"type": "audio", "url": "/audio/a.mp3"} for _ in range(10)],
     )
 
-    assert episodes.record_replay_event(ep_id, "start", "session-a", 0, 10) is None
-    assert episodes.record_replay_event(ep_id, "start", "session-a", 0, 10) is None
-    listed = next(e for e in episodes.list_episodes() if e["id"] == ep_id)
+    assert episodes.record_replay_event(TEST_USER_ID, ep_id, "start", "session-a", 0, 10) is None
+    assert episodes.record_replay_event(TEST_USER_ID, ep_id, "start", "session-a", 0, 10) is None
+    listed = next(e for e in episodes.list_episodes(TEST_USER_ID) if e["id"] == ep_id)
     assert listed["replay_started_count"] == 1, "start should dedupe per session"
     assert listed["replay_count"] == 0, "start must not count as meaningful replay"
 
-    assert episodes.record_replay_event(ep_id, "meaningful", "session-a", 4, 10) is None
-    listed = next(e for e in episodes.list_episodes() if e["id"] == ep_id)
+    assert episodes.record_replay_event(TEST_USER_ID, ep_id, "meaningful", "session-a", 4, 10) is None
+    listed = next(e for e in episodes.list_episodes(TEST_USER_ID) if e["id"] == ep_id)
     assert listed["replay_count"] == 0, "below 50% must not count"
 
-    assert episodes.record_replay_event(ep_id, "meaningful", "session-a", 5, 10) is None
-    assert episodes.record_replay_event(ep_id, "meaningful", "session-a", 8, 10) is None
-    ep = episodes.get_episode(ep_id)
+    assert episodes.record_replay_event(TEST_USER_ID, ep_id, "meaningful", "session-a", 5, 10) is None
+    assert episodes.record_replay_event(TEST_USER_ID, ep_id, "meaningful", "session-a", 8, 10) is None
+    ep = episodes.get_episode(TEST_USER_ID, ep_id)
     assert ep["replay_count"] == 1, "meaningful replay should dedupe per session"
     assert ep["last_replayed_at"], "meaningful replay should stamp last_replayed_at"
     assert "_replay_sessions" not in ep, "public episode payload must not expose session ids"
 
     try:
-        episodes.record_replay_event(ep_id, "bogus", "session-b", 0, 10)
+        episodes.record_replay_event(TEST_USER_ID, ep_id, "bogus", "session-b", 0, 10)
     except ValueError:
         pass
     else:
         raise AssertionError("invalid replay event should raise ValueError")
 
-    assert episodes.record_replay_event("missing-episode", "start", "session-c", 0, 1) == "not_found"
+    assert episodes.record_replay_event(TEST_USER_ID, "missing-episode", "start", "session-c", 0, 1) == "not_found"
     print("  replay_event_counts ✓")
 
 
@@ -378,21 +396,21 @@ def _test_episode_path_traversal_rejected(episodes):
     """Episode mutation helpers must stay scoped to generated/episodes."""
     for bad_id in ("../escape", "..\\escape", "/tmp/escape"):
         try:
-            episodes.get_episode(bad_id)
+            episodes.get_episode(TEST_USER_ID, bad_id)
         except ValueError:
             pass
         else:
             raise AssertionError(f"Expected ValueError for get_episode({bad_id!r})")
 
         try:
-            episodes.rename_episode(bad_id, "Bad")
+            episodes.rename_episode(TEST_USER_ID, bad_id, "Bad")
         except ValueError:
             pass
         else:
             raise AssertionError(f"Expected ValueError for rename_episode({bad_id!r})")
 
         try:
-            episodes.delete_episode(bad_id)
+            episodes.delete_episode(TEST_USER_ID, bad_id)
         except ValueError:
             pass
         else:
@@ -485,6 +503,7 @@ def _test_failed_episode_save(episodes):
     ep_id = "quota-ep-001"
     queue = [{"type": "audio", "url": "/audio/episodes/quota-ep-001/intro.mp3"}]
     episodes.save_episode(
+        user_id=TEST_USER_ID,
         episode_id=ep_id,
         name="Incomplete Cast",
         playlist_uri="spotify:playlist:xyz",
@@ -495,24 +514,25 @@ def _test_failed_episode_save(episodes):
     )
 
     # Raw metadata should have status field
-    ep = episodes.get_episode(ep_id)
+    ep = episodes.get_episode(TEST_USER_ID, ep_id)
     assert ep is not None
     assert ep.get("status") == "quota_failed", f"Expected 'quota_failed', got {ep.get('status')}"
     assert ep["queue"] == queue
 
     # list_episodes must expose the status field
-    lst = episodes.list_episodes()
+    lst = episodes.list_episodes(TEST_USER_ID)
     found = next((e for e in lst if e["id"] == ep_id), None)
     assert found is not None, "Quota-failed episode must appear in list"
     assert found.get("status") == "quota_failed", "list_episodes must expose status"
 
     # Rename must preserve status
-    updated = episodes.rename_episode(ep_id, "Renamed Incomplete")
+    updated = episodes.rename_episode(TEST_USER_ID, ep_id, "Renamed Incomplete")
     assert updated is not None
     assert updated.get("status") == "quota_failed", "rename must not clear status"
 
     # Normal complete episode must default to 'complete'
     episodes.save_episode(
+        user_id=TEST_USER_ID,
         episode_id="complete-ep-001",
         name="Full Cast",
         playlist_uri="spotify:playlist:xyz",
@@ -520,12 +540,12 @@ def _test_failed_episode_save(episodes):
         track_count=5,
         queue=[],
     )
-    complete_ep = episodes.get_episode("complete-ep-001")
+    complete_ep = episodes.get_episode(TEST_USER_ID, "complete-ep-001")
     assert complete_ep.get("status") == "complete", "Default status must be 'complete'"
 
     # Clean up
-    episodes.delete_episode(ep_id)
-    episodes.delete_episode("complete-ep-001")
+    episodes.delete_episode(TEST_USER_ID, ep_id)
+    episodes.delete_episode(TEST_USER_ID, "complete-ep-001")
     print("  failed_episode_save ✓")
 
 
@@ -601,7 +621,7 @@ def _test_playlist_card_quick_generate():
     current language/incognito options — so the one-click action still respects them."""
     import re
 
-    src = Path("resonova/web/player.js").read_text(encoding="utf-8")
+    src = (Path(__file__).parent.parent / "resonova/web/player.js").read_text(encoding="utf-8")
     match = re.search(r"_handlePlaylistClick\(uri\) \{(?P<body>.*?)\n  \}", src, re.S)
     assert match, "_handlePlaylistClick must exist"
     body = match.group("body")
@@ -616,7 +636,7 @@ def _test_playlist_card_quick_generate():
 
 def _test_replay_tracking_frontend_shape():
     """Saved-cast replay tracking should be opt-in and non-blocking in player.js."""
-    src = Path("resonova/web/player.js").read_text(encoding="utf-8")
+    src = (Path(__file__).parent.parent / "resonova/web/player.js").read_text(encoding="utf-8")
 
     assert "replayEpisodeId" in src, "saved-cast playback must opt in to replay tracking"
     assert "_maybeReportMeaningfulReplay" in src, "frontend must report meaningful replay threshold"
@@ -631,7 +651,7 @@ def _test_replay_tracking_frontend_shape():
 
 def _test_mobile_hidden_spotify_attempts_before_deferring():
     """Hidden mobile playback should try Spotify before falling back to unlock/return copy."""
-    src = Path("resonova/web/player.js").read_text(encoding="utf-8")
+    src = (Path(__file__).parent.parent / "resonova/web/player.js").read_text(encoding="utf-8")
 
     assert "play:spotify:pending-unlock" not in src, (
         "Spotify segments should not be preemptively deferred just because the page is hidden."
@@ -660,7 +680,7 @@ def _test_taste_bias_works(variety):
     bias_count = 0
     total_runs = 50
     for _ in range(total_runs):
-        selected = variety.select_tracks_for_episode(tracks, playlist_uri, max_tracks)
+        selected = variety.select_tracks_for_episode(tracks, playlist_uri, max_tracks, user_id=TEST_USER_ID)
         if selected and selected[0].uri == fake_uri:
             bias_count += 1
     no_taste_count = bias_count
@@ -668,7 +688,7 @@ def _test_taste_bias_works(variety):
     # Run many times with taste
     bias_count = 0
     for _ in range(total_runs):
-        selected = variety.select_tracks_for_episode(tracks, playlist_uri, max_tracks, taste=taste)
+        selected = variety.select_tracks_for_episode(tracks, playlist_uri, max_tracks, taste=taste, user_id=TEST_USER_ID)
         if selected and selected[0].uri == fake_uri:
             bias_count += 1
     taste_count = bias_count
@@ -692,7 +712,7 @@ def _test_taste_still_varied(variety):
 
     seen_fingerprints = set()
     for _ in range(30):
-        selected = variety.select_tracks_for_episode(tracks, playlist_uri, max_tracks, taste=taste)
+        selected = variety.select_tracks_for_episode(tracks, playlist_uri, max_tracks, taste=taste, user_id=TEST_USER_ID)
         fp = variety.compute_fingerprint([t.uri for t in selected])
         seen_fingerprints.add(fp)
 
@@ -711,11 +731,11 @@ def _test_no_taste_unchanged(variety):
     # Seed the RNG so we get repeatable sequences
     import random as rng_mod
     rng_mod.seed(42)
-    selected_seeded = variety.select_tracks_for_episode(tracks, playlist_uri, max_tracks, taste=None)
+    selected_seeded = variety.select_tracks_for_episode(tracks, playlist_uri, max_tracks, taste=None, user_id=TEST_USER_ID)
     seeded_order = [t.uri for t in selected_seeded]
 
     rng_mod.seed(42)
-    selected_old = variety.select_tracks_for_episode(tracks, playlist_uri, max_tracks)
+    selected_old = variety.select_tracks_for_episode(tracks, playlist_uri, max_tracks, user_id=TEST_USER_ID)
     old_order = [t.uri for t in selected_old]
 
     assert seeded_order == old_order, (

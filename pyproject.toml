@@ -21,6 +21,7 @@ dependencies = [
     "sse-starlette>=2.1.0",
     "audioop-lts>=0.2.2",
     "uuid7>=0.1.0; python_version < '3.14'",
+    "itsdangerous>=2.1.2",
 ]
 
 [project.scripts]
