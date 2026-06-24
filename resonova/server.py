@@ -290,7 +290,13 @@ async def auth_spotify(request: Request):
 async def auth_callback(request: Request, code: str | None = None, error: str | None = None):
     if error or not code:
         return HTMLResponse(f"<h1>Auth failed</h1><p>{error}</p>", status_code=400)
-    token_info = spotify_api.handle_callback_for_session(code, _resolve_redirect_uri(request))
+    try:
+        token_info = spotify_api.handle_callback_for_session(code, _resolve_redirect_uri(request))
+    except Exception as exc:
+        # Stale or already-used auth code (invalid_grant), network hiccup, etc.
+        # Redirect to a fresh login rather than crashing with 500.
+        logger.warning("OAuth callback failed (%s), restarting login flow", exc)
+        return RedirectResponse("/auth/spotify")
     sp = spotify_api.get_client_from_token(token_info)
     spotify_api.set_session_client(sp)
     loop = asyncio.get_event_loop()
