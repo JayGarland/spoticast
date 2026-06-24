@@ -132,7 +132,7 @@ For tracks 2 onwards:
 - Open with a brief acknowledgement of the track that JUST FINISHED (the previous track). One or two sentences maximum — e.g. "Right after [Song]..." or woven into a transition thought. Then move on.
 - Name the specific connection to the UPCOMING track (tempo, mood, era, artist relationship, thematic link).
 
-For ALL tracks, the bulk of each block (5–7 of the 5–8 exchanges) is about the UPCOMING track:
+For ALL tracks, the bulk of each block (3 of the 3–4 exchanges) is about the UPCOMING track:
 - What this song is ABOUT: lyrics, imagery, emotional core. Quote or paraphrase a line if illuminating.
 - What the artist has said about it — specific anecdotes beat vague praise.
 - Production story, recording context, the album and why it matters.
@@ -604,7 +604,7 @@ def build_prompt(context: dict[str, Any]) -> str:
 (Each track's commentary is a DJ intro that plays BEFORE its track. Track 1 has no previous track to reference. Tracks 2+ briefly acknowledge what just played, then introduce the upcoming track.)
 {track_section}
 {prior_cast_section}
-Generate the complete podcast script including the outro. Make the per-track commentary genuinely rich — 5-8 exchanges, 60-120 seconds when spoken. Use the research data above as concrete talking points, not just background.
+Generate the complete podcast script including the outro. Make the per-track commentary genuinely rich — 3-4 exchanges, 45-60 seconds when spoken. Use the research data above as concrete talking points, not just background.
 """
 
 
