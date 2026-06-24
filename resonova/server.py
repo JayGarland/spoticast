@@ -98,6 +98,7 @@ class Job:
         self.playlist_uri = playlist_uri
         self.playlist_name: str = ""
         self.user_id: str = ""
+        self.sp: Any = None
         self.track_uris: list[str] | None = None
         self.incognito: bool = False
         self.commentary_language: str | None = None
@@ -149,6 +150,12 @@ def _format_generation_error(exc: Exception) -> str:
         return f"Spotify request failed ({status}): {reason}"
 
     return str(exc)
+
+
+def _with_sp(sp, fn, *args):
+    """Set the per-session Spotify client inside the executor thread before calling fn."""
+    spotify_api.set_session_client(sp)
+    return fn(*args)
 
 
 # ---------------------------------------------------------------------------
@@ -224,7 +231,7 @@ def _select_playlist_tracks_for_episode(tracks: list[Any], playlist_uri: str, us
     )
 
 
-async def _auto_refresh_profile_on_connect(user_id: str) -> None:
+async def _auto_refresh_profile_on_connect(user_id: str, sp) -> None:
     """Non-blocking: populate profile from library after connect, if profile is empty."""
     try:
         profile = profile_store.load_profile(user_id)
@@ -232,8 +239,8 @@ async def _auto_refresh_profile_on_connect(user_id: str) -> None:
         if spotify_src.get("connected") and profile_store.profile_has_content(profile):
             return
         loop = asyncio.get_event_loop()
-        saved_tracks = await loop.run_in_executor(None, spotify_api.fetch_saved_tracks)
-        followed_artists = await loop.run_in_executor(None, spotify_api.fetch_followed_artists)
+        saved_tracks = await loop.run_in_executor(None, _with_sp, sp, spotify_api.fetch_saved_tracks)
+        followed_artists = await loop.run_in_executor(None, _with_sp, sp, spotify_api.fetch_followed_artists)
         profile = profile_store.summarize_library(user_id, saved_tracks, followed_artists, profile)
         profile = profile_store.summarize_saved_casts(user_id, profile)
         profile = profile_store.fold_feedback_into_profile(user_id, profile)
@@ -312,8 +319,14 @@ async def auth_callback(request: Request, code: str | None = None, error: str | 
             )
     request.session["token_info"] = token_info
     request.session["user_id"] = user_id
-    asyncio.create_task(_auto_refresh_profile_on_connect(user_id))
+    asyncio.create_task(_auto_refresh_profile_on_connect(user_id, sp))
     return RedirectResponse("/?auth=success")
+
+
+@app.get("/api/me")
+async def api_me(request: Request):
+    """Debug: return the Spotify user ID stored in the current session."""
+    return JSONResponse({"user_id": request.session.get("user_id", None)})
 
 
 @app.get("/auth/token")
@@ -353,7 +366,7 @@ async def lastfm_disconnect():
 async def api_recent(request: Request):
     user_id, sp = await get_current_user(request)
     loop = asyncio.get_event_loop()
-    playlists = await loop.run_in_executor(None, spotify_api.fetch_recent_plays)
+    playlists = await loop.run_in_executor(None, _with_sp, sp, spotify_api.fetch_recent_plays)
     return JSONResponse({"playlists": playlists})
 
 
@@ -363,7 +376,7 @@ async def api_playlists(request: Request, limit: int = 50, offset: int = 0):
     user_id, sp = await get_current_user(request)
     loop = asyncio.get_event_loop()
     result = await loop.run_in_executor(
-        None, lambda: spotify_api.fetch_user_playlists(limit, offset)
+        None, _with_sp, sp, lambda: spotify_api.fetch_user_playlists(limit, offset)
     )
     return JSONResponse(result)
 
@@ -501,8 +514,8 @@ async def api_profile_refresh(request: Request):
     loop = asyncio.get_event_loop()
     try:
         saved_tracks, followed_artists = await asyncio.gather(
-            loop.run_in_executor(None, spotify_api.fetch_saved_tracks),
-            loop.run_in_executor(None, spotify_api.fetch_followed_artists),
+            loop.run_in_executor(None, _with_sp, sp, spotify_api.fetch_saved_tracks),
+            loop.run_in_executor(None, _with_sp, sp, spotify_api.fetch_followed_artists),
         )
         profile = profile_store.load_profile(user_id)
         profile = profile_store.summarize_library(user_id, saved_tracks, followed_artists, profile)
@@ -577,6 +590,7 @@ async def generate(req: GenerateRequest, request: Request):
     source = req.playlist_uri or "track_list"
     job = Job(job_id, source)
     job.user_id = user_id
+    job.sp = sp
     job.track_uris = req.track_uris
     job.incognito = req.incognito
     if req.commentary_language:
@@ -652,6 +666,7 @@ async def serve_audio(filename: str):
 async def _run_generation(job: Job):
     """Background task: fetch data → generate script → synthesize audio → save episode."""
     loop = asyncio.get_event_loop()
+    sp = job.sp
     episode_id = job.job_id
 
     try:
@@ -665,13 +680,13 @@ async def _run_generation(job: Job):
 
         if job.track_uris:
             tracks = await loop.run_in_executor(
-                None, spotify_api.fetch_tracks, job.track_uris[:settings.max_tracks]
+                None, _with_sp, sp, spotify_api.fetch_tracks, job.track_uris[:settings.max_tracks]
             )
             job.playlist_name = "Custom tracks"
         else:
             tracks, job.playlist_name = await asyncio.gather(
-                loop.run_in_executor(None, spotify_api.fetch_playlist, job.playlist_uri),
-                loop.run_in_executor(None, spotify_api.fetch_playlist_name, job.playlist_uri),
+                loop.run_in_executor(None, _with_sp, sp, spotify_api.fetch_playlist, job.playlist_uri),
+                loop.run_in_executor(None, _with_sp, sp, spotify_api.fetch_playlist_name, job.playlist_uri),
             )
             tracks = _select_playlist_tracks_for_episode(tracks, job.playlist_uri, job.user_id)
             _playlist_selected_uris = [t.uri for t in tracks]
@@ -685,8 +700,8 @@ async def _run_generation(job: Job):
 
         track_uris = [t.uri for t in tracks]
         features, user_ctx = await asyncio.gather(
-            loop.run_in_executor(None, spotify_api.fetch_audio_features, track_uris),
-            loop.run_in_executor(None, spotify_api.fetch_user_context),
+            loop.run_in_executor(None, _with_sp, sp, spotify_api.fetch_audio_features, track_uris),
+            loop.run_in_executor(None, _with_sp, sp, spotify_api.fetch_user_context),
             return_exceptions=True,
         )
 
