@@ -267,7 +267,16 @@ async def synthesize_dialogue(lines: list[dict]) -> bytes:
                 contents=prompt,
                 config=generate_config,
             )
-            return response.candidates[0].content.parts[0].inline_data.data
+            candidate = response.candidates[0] if response.candidates else None
+            parts = candidate.content.parts if (candidate and candidate.content) else None
+            if not parts or not parts[0].inline_data or not parts[0].inline_data.data:
+                finish_reason = getattr(candidate, "finish_reason", None) if candidate else None
+                raise RuntimeError(
+                    f"TTS response contained no audio data "
+                    f"(finish_reason={finish_reason!r}). "
+                    f"This is usually a safety block or an empty response from the model."
+                )
+            return parts[0].inline_data.data
 
         except Exception as exc:
             quota_info = _parse_quota_error(exc)
