@@ -16,6 +16,7 @@ Updated: on CEO instruction only ("update dashboard")
 | **Last product scan** | 2026-06-24 (Antigravity, uncommitted changes verified & tests validated) |
 | **Last market briefing** | — |
 | **CEO decisions needed** | Confirm commit of audited changes; Decide if multi-user session/profile isolation should be built next for Option B testers |
+| **To verify** | New docs structure (`docs/boss/` + `docs/agents/`): confirm agents briefed with old `docs/strategy/` paths still navigate correctly in practice |
 
 ---
 
