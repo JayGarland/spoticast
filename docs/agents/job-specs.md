@@ -287,7 +287,7 @@ Help the boss recruit, trial, compare, and manage AI agents by role.
 
 ## Job Spec: gem-reviewer (Internal Auditor / Product Reviewer — via gem-orchestrator)
 
-Status: trial — hired 2026-06-25. Fills the HIGH PRIORITY internal auditor slot. Invoked as a subagent via gem-orchestrator, not directly. Source: `gem-team` plugin (local agents directory).
+Status: **hired** — gate passed 2026-06-25. Trial OWASP findings verified real (4/4, 0 false positives); two HIGH findings fixed and merged to main (d45f923, a2b3fd5); remaining items tracked in `docs/boss/decisions/security-pre-beta-tasks.md`. Fills the HIGH PRIORITY internal auditor slot. Invoked directly with `-p / --agent gem-reviewer --deny-tool write`. Source: `gem-team` plugin (local agents directory).
 
 ### Mission
 
