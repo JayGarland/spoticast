@@ -378,8 +378,7 @@ Finding (verified): DeepSeek is **not** in the Copilot CLI's built-in model rout
 - `COPILOT_PROVIDER_BASE_URL` = DeepSeek's OpenAI-compatible endpoint (e.g. `https://api.deepseek.com`)
 - `COPILOT_PROVIDER_TYPE` = `openai`
 - `COPILOT_PROVIDER_API_KEY` = the boss's DeepSeek API key
-- `COPILOT_MODEL` = the model name DeepSeek's API expects (confirm whether `deepseek-v4-pro` is a
-  valid API model; otherwise `deepseek-chat` / `deepseek-reasoner`)
+- `COPILOT_MODEL` = the model name DeepSeek's API expects (`deepseek-v4-pro` confirmed 2026-06-25)
 - optional `COPILOT_PROVIDER_MODEL_ID` = a well-known base id so tool-support/token-limit config applies.
 
 Boundaries:
@@ -401,7 +400,7 @@ variables**:
 ```
 setx COPILOT_PROVIDER_BASE_URL "https://api.deepseek.com"
 setx COPILOT_PROVIDER_TYPE "openai"
-setx COPILOT_MODEL "deepseek-chat"            # or deepseek-v4-pro if your account exposes it
+setx COPILOT_MODEL "deepseek-v4-pro"
 setx COPILOT_PROVIDER_API_KEY "<your key>"    # boss runs this one
 ```
 
@@ -474,11 +473,14 @@ Maturity ranking for multi-agent CLI workflows (boss research, 2026-06-22):
    No `--agent` CLI flag, but the platform supports custom sub-agents via `define_subagent` /
    `invoke_subagent` tools, plus plugins and SKILL.md skills. Manager orchestration is possible
    through prompt-level subagent delegation. See `docs/agents/chef-guides/antigravity-cli.md`.
-6. **Cursor CLI** — Cursor IDE's standalone CLI agent (`agent` command). Installed 2026-06-23.
-   No `--agent` flag, but supports subagent delegation via `Task` tool with predefined types
-   (`generalPurpose`, `bugbot`, `security-review`). 50+ models (Claude/OpenAI/Gemini/Grok).
-   Full RUG protocol not replicable (no custom subagent roles). See
-   `docs/agents/chef-guides/cursor-cli.md`.
+6. **Cursor CLI** — Cursor IDE's standalone CLI agent (`agent` command). Installed and
+   authenticated. Re-audited 2026-06-25 under the corrected standard: use Cursor-native
+   strengths, do not judge it as a RUG clone. Useful surface includes plan/ask modes,
+   headless `-p` with structured output, broad model access, `--worktree` isolation,
+   `.cursor/rules/` plus `AGENTS.md`, MCP/ACP, worker/cloud workflows, and documented
+   custom subagents under `.cursor/agents/`. Candidate manager/reviewer interface pending
+   a Cursor-native trial; not an approval authority and not the default product-code
+   implementation manager. See `docs/agents/chef-guides/cursor-cli.md`.
 
 Budget reality (boss): Claude Code is best but running multi-agent on Claude is costly; for budget,
 reasonixcli (DeepSeek) or Copilot `/fleet` are cheaper. Current routing: keep Copilot/RUG for the known

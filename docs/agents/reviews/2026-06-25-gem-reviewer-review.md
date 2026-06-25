@@ -59,7 +59,7 @@ Duration: 52s. Tokens: ↑331.3k (288.8k cached) / ↓3.5k. `Changes +0 -0`.
 
 ## Cost / Coordination Notes
 
-- DeepSeek deepseek-chat, in-process invocation (Start-Job env var inheritance issue noted — env vars must be set in-process or passed explicitly)
+- DeepSeek deepseek-v4-pro, in-process invocation (Start-Job env var inheritance issue noted — env vars must be set in-process or passed explicitly)
 - 52 seconds, ~331k tokens (mostly cached)
 - No worktree needed since `--deny-tool write` prevented any writes
 

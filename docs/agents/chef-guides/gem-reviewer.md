@@ -42,7 +42,7 @@ $job = Start-Job -ScriptBlock {
     param($key, $brief)
     $env:COPILOT_PROVIDER_BASE_URL = "https://api.deepseek.com"
     $env:COPILOT_PROVIDER_TYPE    = "openai"
-    $env:COPILOT_MODEL            = "deepseek-chat"
+    $env:COPILOT_MODEL            = "deepseek-v4-pro"
     $env:COPILOT_PROVIDER_API_KEY = $key
     copilot -p $brief --agent gem-reviewer --allow-all-tools --deny-tool write -C "F:\GitHub\resonova" --no-color 2>&1
 } -ArgumentList $key, (Get-Content -Raw "$env:TEMP\brief.txt")
