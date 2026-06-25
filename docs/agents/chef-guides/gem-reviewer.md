@@ -23,18 +23,31 @@ Audience: Chef agents
 
 ## 调用方式
 
-gem-reviewer 是 `mode: subagent`，不能单独用 `--agent` 调用。必须通过 gem-orchestrator：
+gem-reviewer 虽然标注 `mode: subagent`，但通过 `copilot -p ... --agent gem-reviewer` **可直接调用**（已验证 2026-06-25）。始终加 `--deny-tool write` 确保只读。**必须在当前进程中显式设置 env vars**——Start-Job 继承系统注册表中的旧值，不可靠。
 
 ```powershell
+# 在当前 PowerShell 进程中直接运行（推荐）
+$env:COPILOT_PROVIDER_API_KEY = "<deepseek-key>"
+$briefContent = Get-Content -Raw "$env:TEMP\brief.txt"
+$output = copilot -p $briefContent --agent gem-reviewer --allow-all-tools --deny-tool write -C "F:\GitHub\resonova" --no-color 2>&1
+$output | Out-File "docs/agents/reviews/$(Get-Date -Format 'yyyy-MM-dd')-gem-reviewer-output.txt"
+$output
+```
+
+若需 Start-Job，显式传递 key：
+
+```powershell
+$key = $env:COPILOT_PROVIDER_API_KEY
 $job = Start-Job -ScriptBlock {
-    copilot --agent gem-orchestrator `
-        --allow-all `
-        -C "F:\GitHub\resonova" `
-        "Using gem-reviewer, audit [scope] for security vulnerabilities and OWASP compliance. Review scope: wave. Return structured findings with file:line citations."
-}
-Wait-Job $job -Timeout 120
-Receive-Job $job
-Remove-Job $job
+    param($key, $brief)
+    $env:COPILOT_PROVIDER_BASE_URL = "https://api.deepseek.com"
+    $env:COPILOT_PROVIDER_TYPE    = "openai"
+    $env:COPILOT_MODEL            = "deepseek-chat"
+    $env:COPILOT_PROVIDER_API_KEY = $key
+    copilot -p $brief --agent gem-reviewer --allow-all-tools --deny-tool write -C "F:\GitHub\resonova" --no-color 2>&1
+} -ArgumentList $key, (Get-Content -Raw "$env:TEMP\brief.txt")
+Wait-Job $job -Timeout 180 | Out-Null
+Receive-Job $job; Remove-Job $job
 ```
 
 ### Brief 模板（安全审计）

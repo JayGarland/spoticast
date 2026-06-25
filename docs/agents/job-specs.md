@@ -335,11 +335,12 @@ Audit code, plans, and wave outputs for security vulnerabilities, OWASP complian
 
 ### Invocation
 
-Not direct-invocable. Route via gem-orchestrator with review brief:
+Direct-invocable (verified 2026-06-25) despite `mode: subagent` declaration. Always use
+`--deny-tool write`. Set env vars in-process (not via Start-Job env inheritance):
 
 ```powershell
-copilot --agent gem-orchestrator --allow-all -C F:\GitHub\resonova
-# Brief: "Using gem-reviewer, audit [scope] for security and OWASP compliance. Return structured findings."
+$env:COPILOT_PROVIDER_API_KEY = "<deepseek-key>"
+copilot -p $brief --agent gem-reviewer --allow-all-tools --deny-tool write -C F:\GitHub\resonova --no-color
 ```
 
 See `docs/agents/chef-guides/gem-reviewer.md`.
