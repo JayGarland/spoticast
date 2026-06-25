@@ -47,7 +47,21 @@ _WEB_DIR = Path(__file__).parent / "web"
 app.mount("/web", StaticFiles(directory=str(_WEB_DIR)), name="web")
 
 from starlette.middleware.sessions import SessionMiddleware
-app.add_middleware(SessionMiddleware, secret_key=settings.session_secret_key)
+
+if settings.session_secret_key == "change-me-in-production":
+    raise RuntimeError(
+        "SESSION_SECRET_KEY is not set. Add it to .env before starting the server."
+    )
+
+# same_site="lax" (not "strict"): OAuth callback arrives as a cross-site redirect
+# from Spotify; "strict" would drop the cookie, breaking the auth flow.
+# https_only mirrors USE_HTTPS so dev HTTP and prod HTTPS both work correctly.
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.session_secret_key,
+    https_only=settings.use_https,
+    same_site="lax",
+)
 
 
 # ---------------------------------------------------------------------------
