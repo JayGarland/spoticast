@@ -213,12 +213,14 @@ def _persistent_memory_guardrail(memory_enabled: bool) -> str:
             "private steering for THIS playlist. You MAY address the listener directly "
             'with "you" / "your" when it sounds natural, and you MAY make bounded, '
             "music-domain callbacks to grounded patterns such as recurring styles, "
-            "recent listening, playlist affinity, seasonal returns, and feedback "
-            "corrections. Keep callbacks sparse and rooted in the playlist's actual "
-            "music. If the memory above is thin, use only light present-playlist "
+            "recent listening, playlist affinity, seasonal returns, feedback "
+            "corrections, and pattern-level temporal callbacks "
+            '(e.g. "this sound keeps coming back for you", "your taste has been '
+            'pulling toward X"). Keep callbacks sparse and rooted in the playlist\'s '
+            "actual music. If the memory above is thin, use only light present-playlist "
             "personalization; never invent history. NEVER use unrelated personal "
-            "context, expose memory metadata, mention replay counts or session history, "
-            'say "last time", "last cast", or "you replayed", recite the listener\'s '
+            "context, expose memory metadata, recite raw replay counts or raw session "
+            'numbers, say "you replayed" or "last cast", recite the listener\'s '
             "artists or tracks as proof of memory, leak private memory into shared or "
             "public casts, or make the listener the subject. The music stays the subject."
         )
