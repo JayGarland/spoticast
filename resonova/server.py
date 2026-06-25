@@ -334,6 +334,8 @@ async def auth_token(request: Request):
     token_info = request.session.get("token_info")
     if token_info is None:
         return JSONResponse({"token": None, "authenticated": False})
+    token_info = spotify_api.refresh_token_if_needed(token_info)
+    request.session["token_info"] = token_info
     return JSONResponse({"token": token_info.get("access_token"), "authenticated": True})
 
 

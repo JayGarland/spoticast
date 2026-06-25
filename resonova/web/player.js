@@ -54,6 +54,7 @@ class ResonovaPlayer {
       protocol: location.protocol,
       userAgent: navigator.userAgent,
     };
+    this._emeStatus = 'checking';
 
     this._spotifyUnhealthy = false;
     this._spotifyRecovering = false;
@@ -61,7 +62,6 @@ class ResonovaPlayer {
     this._spotifyRecoveryFailed = false;
     this._spotifyRecoveryFailureCount = 0;
     this._spotifyReloadRecommended = false;
-
     this._isPaused = false;
     this._nowPlayingTitle = '';
     this._nowPlayingArtist = '';
@@ -90,9 +90,14 @@ class ResonovaPlayer {
     this._obsTimeline = [];
     this._deviceGeneration = 0;
     this._deviceAcquiredAt = null;
+    this._spotifySdkLoadStarted = false;
+    this._spotifySdkScriptReady = false;
+    this._spotifyInitPromise = null;
+    this._spotifyConnectStarted = false;
 
     // Record initial network state
     this._obsRecord('online:init', navigator.onLine ? 'online' : 'offline');
+    this._probeEncryptedMediaSupport();
 
     window.addEventListener('online', () => {
       this._obsRecord('online', '');
@@ -102,6 +107,13 @@ class ResonovaPlayer {
       this._obsRecord('offline', '');
       this._updateNetworkStatus('offline');
     });
+
+    document.addEventListener('pointerdown', () => {
+      this._activateSpotifyFromUserGesture();
+    }, true);
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') this._activateSpotifyFromUserGesture();
+    }, true);
 
     window.addEventListener('pageshow', (e) => {
       this._obsRecord('pageshow', e.persisted ? 'persisted=true' : 'persisted=false');
@@ -181,6 +193,7 @@ class ResonovaPlayer {
     this._spotifyUnhealthy = false;
     this._spotifyRecoveryFailed = false;
     this._lifecycle.authError = null;
+    this._lifecycle.initError = null;
     this._lifecycle.playbackError = null;
     this._lifecycle.notReady = false;
     this._renderDiagnostics(null);
@@ -238,6 +251,7 @@ class ResonovaPlayer {
           try { this.spotifyPlayer?.disconnect(); } catch (_) { }
           this.spotifyPlayer = null;
           this.deviceId = null;
+          this._spotifyConnectStarted = false;
           this._lifecycle.ready = false;
           this._lifecycle.deviceId = null;
           await this._initSpotifyPlayer();
@@ -254,6 +268,7 @@ class ResonovaPlayer {
         this._spotifyRecoveryFailed = false;
         this._spotifyRecoveryFailureCount = 0;
         this._spotifyReloadRecommended = false;
+        this._lifecycle.initError = null;
         this._lifecycle.authError = null;
         this._lifecycle.playbackError = null;
         this._lifecycle.notReady = false;
@@ -298,7 +313,9 @@ class ResonovaPlayer {
       btn._wired = true;
     }
 
-    const isVisible = this._spotifyUnhealthy || this._spotifyRecoveryFailed || this._spotifyReloadRecommended;
+    const isVisible = this._spotifyUnhealthy ||
+      this._spotifyRecoveryFailed ||
+      this._spotifyReloadRecommended;
     btn.style.display = isVisible ? '' : 'none';
 
     if (this._spotifyRecovering) {
@@ -333,6 +350,7 @@ class ResonovaPlayer {
   }
 
   async recoverSpotify() {
+    this._activateSpotifyFromUserGesture();
     if (this._spotifyReloadRecommended) {
       this._obsRecord('recovery:reload-click', '');
       location.reload();
@@ -373,6 +391,7 @@ class ResonovaPlayer {
   }
 
   resume() {
+    this._activateSpotifyFromUserGesture();
     if (!this.currentItem || !this._isPaused) return;
     if (this.currentItem.type === 'audio') {
       this.audioEl.play()
@@ -582,6 +601,7 @@ class ResonovaPlayer {
   }
 
   async _resumePlayback(state) {
+    this._activateSpotifyFromUserGesture();
     this._episodeId = state.episodeId;
 
     const timeline = Array.isArray(state.playbackTimeline)
@@ -1208,96 +1228,173 @@ class ResonovaPlayer {
   }
 
   _loadSpotifySDK() {
-    window.onSpotifyWebPlaybackSDKReady = () => this._initSpotifyPlayer();
+    if (this._spotifySdkLoadStarted) {
+      if (this._spotifySdkScriptReady && !this.spotifyPlayer) this._initSpotifyPlayer();
+      return;
+    }
+    this._spotifySdkLoadStarted = true;
+    if (window.Spotify?.Player) {
+      this._spotifySdkScriptReady = true;
+      this._initSpotifyPlayer();
+      return;
+    }
+    window.onSpotifyWebPlaybackSDKReady = () => {
+      this._spotifySdkScriptReady = true;
+      this._initSpotifyPlayer();
+    };
     const script = document.createElement('script');
     script.src = 'https://sdk.scdn.co/spotify-player.js';
     document.head.appendChild(script);
   }
 
+  async _probeEncryptedMediaSupport() {
+    if (!navigator.requestMediaKeySystemAccess) {
+      this._emeStatus = 'unsupported';
+      this._obsRecord('eme:unsupported', '');
+      return;
+    }
+    try {
+      await navigator.requestMediaKeySystemAccess('com.widevine.alpha', [{
+        initDataTypes: ['cenc'],
+        videoCapabilities: [{ contentType: 'video/mp4; codecs="avc1.42E01E"' }],
+        audioCapabilities: [{ contentType: 'audio/mp4; codecs="mp4a.40.2"' }],
+      }]);
+      this._emeStatus = 'widevine-ok';
+      this._obsRecord('eme:widevine-ok', '');
+    } catch (err) {
+      this._emeStatus = 'widevine-fail';
+      this._obsRecord('eme:widevine-fail', (err?.message || '').slice(0, 80));
+    }
+    this._renderDiagnostics(null);
+  }
+
   async _initSpotifyPlayer() {
+    if (this.spotifyPlayer) return this.spotifyPlayer;
+    if (this._spotifyInitPromise) return this._spotifyInitPromise;
     // Always fetch a fresh token — it may have been refreshed server-side
-    this._lifecycle.sdkLoaded = true;
-    const { token } = await this._apiFetch('/auth/token');
-    if (!token) return;
-    this._cachedToken = token;
+    this._spotifyInitPromise = (async () => {
+      this._lifecycle.sdkLoaded = true;
+      this._lifecycle.ready = false;
+      this._lifecycle.deviceId = null;
+      this._lifecycle.initError = null;
+      this._lifecycle.authError = null;
+      this._lifecycle.playbackError = null;
+      this._lifecycle.notReady = false;
+      this._lifecycle.connectCalled = false;
+      this._lifecycle.connectResult = null;
+      const { token } = await this._apiFetch('/auth/token');
+      if (!token) return null;
+      this._cachedToken = token;
 
-    this.spotifyPlayer = new window.Spotify.Player({
-      name: 'Resonova',
-      getOAuthToken: async (cb) => {
-        try {
-          const { token: fresh } = await this._apiFetch('/auth/token');
-          if (fresh) this._cachedToken = fresh;
-          cb(fresh || this._cachedToken);
-        } catch {
-          // If fetch fails (mobile suspended/backgrounded), use cached token
-          // so cb() is always called and SDK never gets stuck
-          if (this._cachedToken) cb(this._cachedToken);
+      this.spotifyPlayer = new window.Spotify.Player({
+        name: 'Resonova',
+        getOAuthToken: async (cb) => {
+          try {
+            const { token: fresh } = await this._apiFetch('/auth/token');
+            if (fresh) this._cachedToken = fresh;
+            cb(fresh || this._cachedToken);
+          } catch {
+            // If fetch fails (mobile suspended/backgrounded), use cached token
+            // so cb() is always called and SDK never gets stuck
+            if (this._cachedToken) cb(this._cachedToken);
+          }
+        },
+        volume: _SPOTIFY_VOLUME,
+      });
+      this._lifecycle.playerConstructed = true;
+
+      this.spotifyPlayer.addListener('ready', ({ device_id }) => {
+        this.deviceId = device_id;
+        this._lifecycle.ready = true;
+        this._lifecycle.deviceId = device_id;
+        this._lifecycle.initError = null;
+        this._deviceGeneration++;
+        this._deviceAcquiredAt = Date.now();
+        this._obsRecord('device:ready', `gen=${this._deviceGeneration} id=...${device_id.slice(-6)}`);
+        this._clearSpotifyUnhealthy();
+        // Do not transfer playback on passive page load. A phone refreshing the
+        // library must not steal Spotify playback from an active PC session.
+      });
+
+      this.spotifyPlayer.addListener('not_ready', () => {
+        this._markSpotifyUnhealthy('not_ready', 'Device was marked not ready');
+      });
+
+      this.spotifyPlayer.addListener('initialization_error', ({ message }) => {
+        console.error('Spotify init error:', message);
+        this._lifecycle.initError = message;
+        this._renderDiagnostics(null);
+        const sdkWarning = document.getElementById('sdk-warning');
+        if (this._emeStatus === 'widevine-fail' || this._emeStatus === 'unsupported') {
+          sdkWarning.textContent = 'Spotify is unavailable — protected content is blocked in this browser session. If you\'re in a private or incognito window, switch to a regular browser window.';
         }
-      },
-      volume: _SPOTIFY_VOLUME,
-    });
-    this._lifecycle.playerConstructed = true;
+        sdkWarning.classList.add('visible');
+      });
 
-    this.spotifyPlayer.addListener('ready', ({ device_id }) => {
-      this.deviceId = device_id;
-      this._lifecycle.ready = true;
-      this._lifecycle.deviceId = device_id;
-      this._deviceGeneration++;
-      this._deviceAcquiredAt = Date.now();
-      this._obsRecord('device:ready', `gen=${this._deviceGeneration} id=...${device_id.slice(-6)}`);
-      this._clearSpotifyUnhealthy();
-      // Do not transfer playback on passive page load. A phone refreshing the
-      // library must not steal Spotify playback from an active PC session.
-    });
+      this.spotifyPlayer.addListener('authentication_error', ({ message }) => {
+        this._spotifyConnectStarted = false;
+        this._markSpotifyUnhealthy('authentication_error', message);
+      });
 
-    this.spotifyPlayer.addListener('not_ready', () => {
-      this._markSpotifyUnhealthy('not_ready', 'Device was marked not ready');
-    });
+      this.spotifyPlayer.addListener('account_error', (e) => {
+        this._lifecycle.accountError = e?.message || true;
+        this._renderDiagnostics(null);
+        document.getElementById('sdk-warning').classList.add('visible');
+      });
 
-    this.spotifyPlayer.addListener('initialization_error', ({ message }) => {
-      console.error('Spotify init error:', message);
-      this._lifecycle.initError = message;
-      this._renderDiagnostics(null);
-      document.getElementById('sdk-warning').classList.add('visible');
-    });
+      this.spotifyPlayer.addListener('playback_error', ({ message }) => {
+        this._markSpotifyUnhealthy('playback_error', message);
+      });
 
-    this.spotifyPlayer.addListener('authentication_error', ({ message }) => {
-      this._markSpotifyUnhealthy('authentication_error', message);
-    });
+      this.spotifyPlayer.addListener('autoplay_failed', () => {
+        this._lifecycle.autoplayFailed = true;
+        this._renderDiagnostics(null);
+      });
 
-    this.spotifyPlayer.addListener('account_error', (e) => {
-      this._lifecycle.accountError = e?.message || true;
-      this._renderDiagnostics(null);
-      document.getElementById('sdk-warning').classList.add('visible');
-    });
+      this.spotifyPlayer.addListener('player_state_changed', (state) => {
+        this._handleSpotifyStateChange(state);
+      });
 
-    this.spotifyPlayer.addListener('playback_error', ({ message }) => {
-      this._markSpotifyUnhealthy('playback_error', message);
+      this._connectSpotifyPlayer();
+      return this.spotifyPlayer;
+    })().finally(() => {
+      this._spotifyInitPromise = null;
     });
+    return this._spotifyInitPromise;
+  }
 
-    this.spotifyPlayer.addListener('autoplay_failed', () => {
-      this._lifecycle.autoplayFailed = true;
-      this._renderDiagnostics(null);
-    });
-
-    this.spotifyPlayer.addListener('player_state_changed', (state) => {
-      this._handleSpotifyStateChange(state);
-    });
-
-    const connectPromise = this.spotifyPlayer.connect();
+  _connectSpotifyPlayer() {
+    if (!this.spotifyPlayer || this.deviceId || this._spotifyConnectStarted) return;
+    this._spotifyConnectStarted = true;
     this._lifecycle.connectCalled = true;
     this._renderDiagnostics(null);
+    const connectPromise = this.spotifyPlayer.connect();
     connectPromise.then(
       (ok) => {
         this._lifecycle.connectResult = ok ? 'success' : 'false';
+        if (!ok) this._spotifyConnectStarted = false;
         this._renderDiagnostics(null);
       },
       (err) => {
+        this._spotifyConnectStarted = false;
         this._lifecycle.connectResult = 'error: ' + (err?.message || err);
         this._renderDiagnostics(null);
       }
     );
     connectPromise.catch(() => { });
+  }
+
+  _activateSpotifyFromUserGesture() {
+    if (!this._spotifySdkLoadStarted) this._loadSpotifySDK();
+    if (this._spotifySdkScriptReady && !this.spotifyPlayer) this._initSpotifyPlayer();
+    if (!this.spotifyPlayer) return;
+    try {
+      this.spotifyPlayer.activateElement?.();
+      this._obsRecord('spotify:activate', '');
+    } catch (err) {
+      this._obsRecord('spotify:activate-fail', (err?.message || '').slice(0, 80));
+    }
+    this._connectSpotifyPlayer();
   }
 
   async _transferPlayback(deviceId, token) {
@@ -1400,6 +1497,7 @@ class ResonovaPlayer {
     try { this.spotifyPlayer?.disconnect(); } catch (_) { }
     this.spotifyPlayer = null;
     this.deviceId = null;
+    this._spotifyConnectStarted = false;
     this._lifecycle.ready = false;
     this._lifecycle.deviceId = null;
   }
@@ -1409,6 +1507,7 @@ class ResonovaPlayer {
   // ──────────────────────────────────────────────
 
   async generate(rawInput) {
+    this._activateSpotifyFromUserGesture();
     const parsed = this._parseInput(rawInput);
     if (!parsed) {
       this._showError('Paste a Spotify playlist link, URI, or a list of track URLs.');
@@ -1855,7 +1954,7 @@ class ResonovaPlayer {
       const recovered = await this._recoverSpotifySession();
       if (!recovered) {
         console.error('Spotify recovery failed. Halting playback.');
-        this._setNowPlaying('(Spotify connection lost. Click Recover below.)', '');
+        this._setNowPlaying('(Spotify connection lost.)', 'Use Skip Music to continue commentary');
         document.getElementById('waveform').classList.remove('spotify-mode');
         document.getElementById('progress-fill').classList.remove('spotify-mode');
         return;
@@ -2110,6 +2209,7 @@ class ResonovaPlayer {
       row('Queue', d.queueRemaining) +
       '<div class="spotify-diag-sep"></div>' +
       row('SDK loaded', lc.sdkLoaded ? 'yes' : 'no') +
+      row('EME', this._emeStatus || '-', this._emeStatus === 'unsupported' || this._emeStatus === 'widevine-fail') +
       row('Player built', lc.playerConstructed ? 'yes' : 'no') +
       row('connect()', lc.connectCalled ? (lc.connectResult || '...') : 'not called', !lc.connectCalled || (lc.connectCalled && !lc.connectResult)) +
       row('ready', lc.ready ? 'yes' : 'no', !lc.ready) +
@@ -2628,6 +2728,7 @@ class ResonovaPlayer {
   }
 
   async _playEpisode(episodeId) {
+    this._activateSpotifyFromUserGesture();
     this._episodeId = episodeId;
     try {
       const ep = await this._apiFetch(`/api/episodes/${episodeId}`);
