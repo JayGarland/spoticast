@@ -78,6 +78,8 @@ def _run_tests() -> None:
         _test_cast_depth_deep_injects_directive()
         _test_cast_vibe_witty_injects_tone()
         _test_cast_lenses_default_unchanged()
+        # Prior-cast replay safety
+        _test_prior_cast_no_replay_language()
 
         os.chdir(original_cwd)
 
@@ -1154,6 +1156,115 @@ def _test_cast_lenses_default_unchanged():
     assert "DEPTH" not in prompt_no_lens
     assert "VIBE" not in prompt_no_lens
     print("  cast_lenses_default_unchanged ✓")
+
+
+def _test_prior_cast_no_replay_language():
+    """prior_cast_replay_count > 0 must NOT inject explicit replay/session-history language."""
+    from resonova.api.gemini import build_prompt
+
+    def _assert_no_replay_recital(prompt: str) -> None:
+        forbidden = (
+            "The listener replayed this cast",
+            "replayed this cast",
+            "engaged with",
+            "They found value in it",
+            "fully engaged",
+            "listener has heard a previous cast",
+        )
+        for phrase in forbidden:
+            assert phrase not in prompt, f"Must not contain replay/session-history recital: {phrase}"
+
+    ctx = _make_minimal_context()
+    ctx["persistent_profile"] = {
+        "memory_enabled": True,
+        "taste_profile": {
+            "top_artists": ["DurableMain"],
+            "recurring_styles": ["ambient"],
+            "favorite_eras": [],
+            "recent_shifts": [],
+            "playlist_patterns": [],
+            "saved_library_artists": [],
+            "followed_artists": [],
+            "replay_affinity": ["strong affinity with 'Night Drive' style"],
+        },
+        "memories": [],
+        "commentary_preferences": {"tone": [], "depth": "balanced", "avoid": [], "loved_patterns": []},
+    }
+
+    # Setup: prior cast with replay count > 0 and a summary
+    ctx["prior_cast_count"] = 1
+    ctx["prior_cast_summary"] = 'Episode title: "Test Episode" | Intro framing: A test intro.'
+    ctx["prior_cast_replay_count"] = 3
+
+    prompt = build_prompt(ctx)
+
+    _assert_no_replay_recital(prompt)
+
+    # The prompt must still have the prior-cast continuation instruction
+    assert "CONTINUATION INSTRUCTION" in prompt, (
+        "Continuation instruction must still be present"
+    )
+    assert "Build forward from it confidently" in prompt, (
+        "Replay > 0 should use positive private steering"
+    )
+    assert "bounded Stance C private music memory" in prompt
+    assert 'MAY address the listener directly with "you" / "your"' in prompt
+    assert "Night Drive" in prompt, "memory-on replay affinity should remain private style steering"
+
+    ctx_off = _make_minimal_context()
+    ctx_off["persistent_profile"] = dict(ctx["persistent_profile"], memory_enabled=False)
+    ctx_off["prior_cast_count"] = 1
+    ctx_off["prior_cast_summary"] = 'Episode title: "Off" | Intro framing: Off.'
+    ctx_off["prior_cast_replay_count"] = 3
+    memory_off_prompt = build_prompt(ctx_off)
+    _assert_no_replay_recital(memory_off_prompt)
+    assert "strict Stance B radio style" in memory_off_prompt
+    assert "bounded Stance C" not in memory_off_prompt
+    assert "Night Drive" not in memory_off_prompt
+
+    # Also verify: incognito still suppresses everything
+    ctx2 = _make_minimal_context()
+    ctx2["persistent_profile"] = ctx["persistent_profile"]
+    ctx2["prior_cast_count"] = 1
+    ctx2["prior_cast_summary"] = 'Episode title: "Nope" | Intro framing: Nope.'
+    ctx2["prior_cast_replay_count"] = 3
+    ctx2["incognito"] = True
+    incognito_prompt = build_prompt(ctx2)
+    _assert_no_replay_recital(incognito_prompt)
+    # Incognito should still have the prior-cast section (that's about the cast, not listener profile)
+    assert "CONTINUATION INSTRUCTION" in incognito_prompt, (
+        "Prior-cast continuation should still appear in incognito mode"
+    )
+    # But incognito must omit profile memory and replay affinity.
+    assert "(Incognito mode" in incognito_prompt, (
+        "Incognito mode marker must appear"
+    )
+    assert "PERSISTENT MEMORY" not in incognito_prompt
+    assert "Night Drive" not in incognito_prompt
+
+    print("  prior_cast_no_replay_language ✓")
+
+    # ── Also verify else-branch (replay_count == 0) has no listener-behavior language ──
+    ctx3 = _make_minimal_context()
+    ctx3["prior_cast_count"] = 1
+    ctx3["prior_cast_summary"] = 'Episode title: "Meh" | Intro framing: Meh.'
+    ctx3["prior_cast_replay_count"] = 0
+    prompt3 = build_prompt(ctx3)
+    _assert_no_replay_recital(prompt3)
+    assert "unclear" not in prompt3, (
+        "Zero-replay branch must not speculate about listener engagement"
+    )
+    assert "listener" not in prompt3.lower().split("continuation instruction")[-1].split("\n")[0], (
+        "Zero-replay continuation should not mention 'listener'"
+    )
+
+    ctx4 = _make_minimal_context()
+    ctx4["prior_cast_count"] = 1
+    ctx4["prior_cast_replay_count"] = 3
+    no_summary_prompt = build_prompt(ctx4)
+    _assert_no_replay_recital(no_summary_prompt)
+    assert "Continue the playlist series with fresh entry points" in no_summary_prompt
+    print("  prior_cast_no_replay_language (zero-replay branch) ✓")
 
 
 def _test_summarizers_skip_trail_when_memory_disabled(m):

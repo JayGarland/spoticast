@@ -21,6 +21,7 @@ This note records current trust weights for Resonova manager agents after the mo
 | gem-orchestrator / gem-team | 0.82 | Award for diagnosis | Research, baseline validation, document-first analysis, correcting false assumptions | Normal gate; prefer for diagnosis before implementation |
 | OCP workspace lead / OCP organization | 0.76 | Stable planner | Strategy, roadmap, audits, organizational briefs | Normal gate; use when output should become repo docs |
 | RUG manager | 0.70 | Preferred implementation manager, strict gate | Bounded patches with explicit file limits and acceptance tests | Strict gate; require no broad formatting, no speculative recovery loops, no coding outside task scope |
+| reasonixcli manager interface | 0.68 | Hired restricted manager | Budget-sensitive DeepSeek work, broad exploration, docs/research, bounded product-code trials in isolated worktrees | Strict Chef gate; use `/reasonixcli`, not `/rug`; no direct main-worktree implementation or self-approval |
 
 ## Incident Review
 
@@ -45,7 +46,10 @@ This note records current trust weights for Resonova manager agents after the mo
 2. Assign implementation to `RUG` after the failing layer is named and acceptance evidence is specified; owner currently prefers RUG for implementation tests.
 3. If RUG touches unrelated files or creates formatting churn, reject the patch and salvage only the minimal logic.
 4. Use `OCP` for strategy docs, roadmap, and company operating model work.
-5. Chef layer must produce the exact manager query and include file limits, no-go rules, and validation evidence.
+5. Use `reasonixcli` when the work benefits from long-running DeepSeek sessions, cheap broad context,
+   native `explore` / `task` / `review` / `wait` orchestration, or a bounded product-code trial
+   in an isolated worktree; do not frame it as a RUG clone.
+6. Chef layer must produce the exact manager query and include file limits, no-go rules, and validation evidence.
 
 ## Reward / Penalty Ledger
 

@@ -107,6 +107,7 @@ Possible future specialized chefs:
 Current manager pool:
 
 - RUG manager: `C:\Users\Administrator\.copilot\installed-plugins\awesome-copilot\rug-agentic-workflow\agents\rug-orchestrator.md`
+- reasonixcli manager interface: `C:\Users\Administrator\AppData\Roaming\reasonix\commands\reasonixcli.md`
 - gem-team leader: `C:\Users\Administrator\.copilot\agents\gem-orchestrator.agent.md`
 - OCP organization leader: `C:\Users\Administrator\AppData\Roaming\Code\User\prompts\OCP Workspace Lead.agent.md`
 
@@ -415,27 +416,42 @@ Setup status (2026-06-22): the boss has **completed** the persistent BYOK setup 
 the active model for the Copilot CLI, so manager runs use DeepSeek with no wrapper. Confirm the
 exact `COPILOT_MODEL` value works on a small task before a real build.
 
-### Candidate Manager — reasonix (cost-efficient DeepSeek, long-running)
+### Manager Interface — reasonixcli (cost-efficient DeepSeek, long-running)
 
 Boss-referenced: `https://github.com/esengine/deepseek-reasonix` — a Go terminal coding agent built
 for long-running sessions, kept cheap via **prefix-cache stability** (high DeepSeek cache-hit rate).
 Config-driven (`reasonix.toml`), multi-model (planner/executor in isolated cache sessions),
 MCP-compatible plugins, any OpenAI-compatible endpoint, `npm i -g reasonix`.
 
-Chef note: a credible **second manager option** for budget-sensitive / long-running implementation
-on DeepSeek, and its cache-stability technique is directly relevant to the deep-research generation
-mode's cost problem (`deep-research-generation-mode-brief.md`). Evaluate with a small trial before
-routing real work — not yet adopted; RUG remains the primary manager.
+Decision update 2026-06-25: reasonixcli is no longer framed as a "copy RUG onto another CLI" project.
+That was the wrong evaluation frame. RUG already works where RUG fits. reasonixcli should be used for
+its own strengths: long-running DeepSeek-native sessions, low-cost large-context exploration,
+resumable project state, and native `explore` / `task` / `review` / `wait` orchestration.
+
+Operational status:
+
+- Installed version verified: `reasonix v1.8.0`.
+- DeepSeek credentials are configured outside the Resonova repo.
+- The misleading Reasonix `/rug` command was archived.
+- The active command is `/reasonixcli` at
+  `C:\Users\Administrator\AppData\Roaming\reasonix\commands\reasonixcli.md`.
+- No-write smoke confirmed `explore`, `task`, `review`, and `wait`.
+- Real trials completed: one docs trial, one small frontend navigation fix, and
+  one memory/prompt safety fix. The memory/prompt trial required Chef test
+  strengthening, so the manager is hired but still restricted.
+- Windows bash sandbox reported unavailable, so implementation work should run in isolated
+  worktrees and still requires strict Chef gate.
+
+Use reasonixcli as a hired restricted manager interface for long-running, budget-sensitive,
+research-heavy, high-volume, or bounded product-code work. Do not use it as an approval authority. Do not judge it by
+perfect RUG parity. See `docs/agents/manager-interface-decision-reasonix.md` and
+`docs/agents/chef-guides/reasonixcli.md`.
 
 Decision (2026-06-22, chef): **stay on the GitHub Copilot CLI as the primary manager platform for
 now.** RUG already works there, the workflow is gated, and DeepSeek is already available via BYOK —
-so the budget goal is met today with zero migration. **Trial reasonix in parallel**, scoped to the
-workload where it wins (long-running / deep-research / high-volume), and evaluate three things before
-any switch: (1) the effort to port RUG-equivalent orchestration into reasonix's agent/tool model
-(TOML config + JSON-RPC MCP plugins, NOT Copilot's `vscode/*` tools — a re-implementation, not
-copy-paste), (2) orchestration quality vs RUG, (3) real cache savings on our actual workloads.
-Migrate or dual-run only on that evidence; do not switch a working, gated workflow to a nascent tool
-on enthusiasm.
+so the budget goal is met today with zero migration. Updated by the 2026-06-25 decision above:
+trial reasonixcli in parallel for its native long-running-manager strengths, not as a RUG-equivalent
+port.
 
 CORRECTION 2026-06-22: an earlier note claimed the Copilot CLI is "single-agent only" — that is
 **WRONG / outdated.** The Copilot CLI **does support multi-agent**: `/fleet` (parallel subagent
@@ -451,8 +467,8 @@ Maturity ranking for multi-agent CLI workflows (boss research, 2026-06-22):
 2. **Codex CLI** — explicit parallel specialized subagents (research / implement / review).
 3. **Copilot CLI** — `/fleet` parallel subagents + custom agents; orchestration less mature/
    controllable than Claude Code teams or Codex subagents.
-4. **reasonix** — DeepSeek planner/executor (low-cost, cache-stable); a main executor + optional
-   planner, not a full specialist team.
+4. **reasonixcli** — DeepSeek-native, low-cost, cache-stable long-running manager with verified
+   `explore` / `task` / `review` / `wait` primitives; not a RUG clone and not an approval authority.
 5. **Antigravity CLI** — Gemini CLI's successor (Gemini CLI retired 2026-06-18 for individual
    tiers). Installed 2026-06-23 (v1.0.10, Windows x64). Available as a supplementary CLI.
    No `--agent` CLI flag, but the platform supports custom sub-agents via `define_subagent` /
@@ -465,8 +481,9 @@ Maturity ranking for multi-agent CLI workflows (boss research, 2026-06-22):
    `docs/agents/chef-guides/cursor-cli.md`.
 
 Budget reality (boss): Claude Code is best but running multi-agent on Claude is costly; for budget,
-reasonix (DeepSeek) or Copilot `/fleet` are cheaper. Decision unchanged for now: keep Copilot CLI as
-primary, explore `/fleet` and reasonix, revisit after the current build queue.
+reasonixcli (DeepSeek) or Copilot `/fleet` are cheaper. Current routing: keep Copilot/RUG for the known
+bounded implementation path, and use reasonixcli when long-running manager state, low-cost exploration,
+or high-volume DeepSeek work is the better fit.
 
 Boss intent (2026-06-22): **when multi-agent works, keep using the CUSTOMIZED RUG agents** (RUG
 orchestrator + SWE/QA subagents) — the native single Copilot agent is only a stopgap / budget

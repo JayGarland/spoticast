@@ -523,12 +523,11 @@ def build_prompt(context: dict[str, Any]) -> str:
     if prior_cast_count > 0 and prior_cast_summary:
         if prior_cast_replay_count > 0:
             continuation = (
-                f"The listener replayed this cast (engaged with \u226550% of segments). "
-                f"They found value in it \u2014 open a new angle, go further, do not repeat the same framing."
+                f"The previous episode found strong footing. Build forward from it confidently \u2014 "
+                f"open a new angle, go further, do not repeat the same framing."
             )
         else:
             continuation = (
-                f"It is unclear whether the listener fully engaged with the previous cast. "
                 f"Try a noticeably different approach: different entry points, different angle on the tracks."
             )
         # Build listener-feedback section from the previous episode's rating.
@@ -583,8 +582,8 @@ def build_prompt(context: dict[str, Any]) -> str:
         prior_cast_section = (
             f"\n\n## CONTINUATION INSTRUCTION\n"
             f"This is episode {prior_cast_count + 1} for this playlist. "
-            f"The listener has heard a previous cast for this playlist. "
-            f"Vary your entry points, framing, and talking points \u2014 do not repeat.\n"
+            f"Continue the playlist series with fresh entry points, framing, "
+            f"and talking points \u2014 do not repeat.\n"
         )
 
     return f"""Generate a rich, detailed podcast commentary script for this Spotify playlist.
