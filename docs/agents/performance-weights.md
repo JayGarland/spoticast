@@ -22,6 +22,9 @@ This note records current trust weights for Resonova manager agents after the mo
 | OCP workspace lead / OCP organization | 0.76 | Stable planner | Strategy, roadmap, audits, organizational briefs | Normal gate; use when output should become repo docs |
 | RUG manager | 0.70 | Preferred implementation manager, strict gate | Bounded patches with explicit file limits and acceptance tests | Strict gate; require no broad formatting, no speculative recovery loops, no coding outside task scope |
 | reasonixcli manager interface | 0.68 | Hired restricted manager | Budget-sensitive DeepSeek work, broad exploration, docs/research, bounded product-code trials in isolated worktrees | Strict Chef gate; use `/reasonixcli`, not `/rug`; no direct main-worktree implementation or self-approval |
+| gem-reviewer (via gem-orchestrator) | 0.70 | Trial — hired 2026-06-25 | Security audits, OWASP scans, PRD compliance, wave/plan review — route via gem-orchestrator with review brief | Normal gate; must cite file:line for all findings; do not accept vague or evidenceless findings |
+| se-security-reviewer | 0.65 | Trial — hired 2026-06-25 | Deep OWASP A01-A10 + LLM Top 10 security review; Flask server, OAuth, JWT, user data isolation | Strict gate; new entrant — verify report covers specific file references, not generic advice |
+| agent-governance-reviewer | 0.65 | Trial — hired 2026-06-25 | Multi-agent governance audit: trust boundaries, authority chains, audit trail gaps, policy controls | Strict gate; new entrant — verify recommendations are minimum-viable and fail-closed, not framework bloat |
 
 ## Incident Review
 

@@ -447,7 +447,23 @@ Before a recruiter creates a trial:
 
 ## Open Items
 
-- Choose first quality-team candidate.
+- ~~Choose first quality-team candidate.~~ **Filled 2026-06-25**: gem-reviewer (via gem-orchestrator) hired as Internal Auditor / Product Reviewer (trial). se-security-reviewer and agent-governance-reviewer hired as specialist managers (trial). See `docs/agents/job-specs.md`.
 - Choose first backup chef candidate.
 - Decide whether agent reviews should use one file per review or a running ledger.
 - Decide whether numeric weights should remain in separate incident-specific notes or be replaced by tier labels.
+
+## 2026-06-25 Recruitment Round
+
+Three new manager classes hired from `github/awesome-copilot`:
+
+| Agent | Role | CLI | Status |
+|---|---|---|---|
+| gem-reviewer | Internal Auditor / Product Reviewer | Via gem-orchestrator | Trial, weight 0.70 |
+| se-security-reviewer | Security Specialist Manager | `copilot --agent se-security-reviewer` | Trial, weight 0.65 |
+| agent-governance-reviewer | Multi-Agent Governance Overseer | `copilot --agent agent-governance-reviewer` | Trial, weight 0.65 |
+
+Agent files: `C:\Users\Administrator\.copilot\agents\`  
+Chef guides: `docs/agents/chef-guides/`  
+Job specs: appended to `docs/agents/job-specs.md`
+
+**Next step**: Run first live trial — route a scoped task to each new hire, record results in `docs/agents/reviews/YYYY-MM-DD-[agent]-review.md`, update weights after evidence.

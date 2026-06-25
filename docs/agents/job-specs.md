@@ -284,3 +284,189 @@ Help the boss recruit, trial, compare, and manage AI agents by role.
 - Treat one trial as permanent truth.
 - Decide private budget thresholds.
 - Promote an agent into a different role as a reward.
+
+## Job Spec: gem-reviewer (Internal Auditor / Product Reviewer — via gem-orchestrator)
+
+Status: trial — hired 2026-06-25. Fills the HIGH PRIORITY internal auditor slot. Invoked as a subagent via gem-orchestrator, not directly. Source: `gem-team` plugin (local agents directory).
+
+### Mission
+
+Audit code, plans, and wave outputs for security vulnerabilities, OWASP compliance, PRD coverage, and release risk. Return severity-ranked findings with evidence for chef to act on.
+
+### Core Responsibilities
+
+- Security audits: grep for secrets/PII/SQLi/XSS; scan OWASP A01-A10 + mobile vectors.
+- PRD coverage: verify each requirement has at least one task with acceptance criteria.
+- Plan review: check atomicity, circular deps, wave parallelism, missing contracts.
+- Wave review: changed-lines focus (not full-file re-read); return critical vs needs_revision findings.
+- Mobile security: Keychain/Keystore, cert pinning, jailbreak detection, secure storage, biometric auth, deep links, HTTPS/PII transmission.
+
+### Required Inputs
+
+- Scoped brief naming review_scope (plan or wave) and acceptance criteria.
+- Access to repo files and any relevant DESIGN.md / PRD.yaml.
+- No-go: do not patch code; only review and report.
+
+### Required Outputs
+
+- JSON-structured report: status, critical_findings (file:line format), prd_score, files_reviewed, acceptance_criteria gaps.
+- All findings ranked: critical → failed | non-critical → needs_revision | clean → completed.
+
+### Must Not Do
+
+- Implement or patch code.
+- Approve manager or chef work.
+- Skip the security-grep pass before semantic review.
+- Invent findings without file:line evidence.
+
+### Pass Signals
+
+- Finds real security issues with file:line citations.
+- Distinguishes critical blockers from non-critical revisions.
+- Returns structured JSON output gem-orchestrator can relay to chef.
+- Covers all 8 mobile vectors when mobile files are present.
+
+### Fail Signals
+
+- Produces vague findings without evidence.
+- Claims "no issues" without scanning changed lines.
+- Patches instead of reporting.
+- Requires chef to re-run because output is unstructured.
+
+### Invocation
+
+Not direct-invocable. Route via gem-orchestrator with review brief:
+
+```powershell
+copilot --agent gem-orchestrator --allow-all -C F:\GitHub\resonova
+# Brief: "Using gem-reviewer, audit [scope] for security and OWASP compliance. Return structured findings."
+```
+
+See `docs/agents/chef-guides/gem-reviewer.md`.
+
+---
+
+## Job Spec: se-security-reviewer (Security Specialist Manager)
+
+Status: trial — hired 2026-06-25. Standalone direct-invocable. Source: awesome-copilot (github/awesome-copilot). Local file: `C:\Users\Administrator\.copilot\agents\se-security-reviewer.agent.md`.
+
+### Mission
+
+Deep security review of Resonova's Flask server, Spotify OAuth flow, JWT handling, user data isolation, and LLM prompt pipeline. Catches A01-A10 OWASP and OWASP LLM Top 10 issues before they reach production.
+
+### Core Responsibilities
+
+- Classify code type and risk level before starting (Web API → OWASP Top 10; LLM integration → OWASP LLM Top 10).
+- Broken access control: verify auth decorators and user-scoped data access.
+- Injection: SQL, command, and prompt injection vectors.
+- Cryptographic failures: hashing algorithms, token storage, secret exposure.
+- Zero Trust: verify internal API calls authenticate each other, not just at the edge.
+- LLM security: prompt injection (LLM01), information disclosure (LLM06), output filtering.
+- Write findings to `docs/code-review/[date]-[component]-review.md`.
+
+### Required Inputs
+
+- Scoped brief naming the component (e.g. `resonova/server.py`, `resonova/api/gemini.py`).
+- OWASP focus list (Top 10, LLM Top 10, or both).
+- Risk level context (auth/data-handling = High; UI = Low).
+
+### Required Outputs
+
+- Code review report saved to `docs/code-review/`.
+- Priority-ranked findings: Priority 1 (must fix), Priority 2 (recommended).
+- Each finding includes: vulnerable code snippet + secure replacement.
+- "Ready for Production: Yes/No" verdict per component.
+
+### Must Not Do
+
+- Approve the work of other managers or chef.
+- Make architecture decisions.
+- Implement fixes without explicit assignment.
+- Use vague advice without specific file references.
+
+### Pass Signals
+
+- Identifies real vulnerabilities with specific code references.
+- Covers both OWASP Top 10 and LLM Top 10 when relevant.
+- Produces report chef can act on without re-prompting.
+- Separates must-fix from recommended.
+
+### Fail Signals
+
+- Produces generic advice without file-specific evidence.
+- Misses LLM-specific vectors in a Gemini/prompt-heavy codebase.
+- Cannot say "no critical issues found" with confidence.
+- Requires heavy follow-up prompting.
+
+### Invocation
+
+Direct invocable via local agent file:
+
+```powershell
+copilot --agent se-security-reviewer --allow-all -C F:\GitHub\resonova
+```
+
+See `docs/agents/chef-guides/se-security-reviewer.md`.
+
+---
+
+## Job Spec: agent-governance-reviewer (Multi-Agent Governance Overseer)
+
+Status: trial — hired 2026-06-25. Standalone direct-invocable. Source: awesome-copilot (github/awesome-copilot). Local file: `C:\Users\Administrator\.copilot\agents\agent-governance-reviewer.agent.md`.
+
+### Mission
+
+Audit Resonova's multi-agent operating model — agent trust boundaries, authority chains, audit trails, policy enforcement, and role-separation controls — to ensure the AI company runs with governance discipline and no agent can exceed its authority.
+
+### Core Responsibilities
+
+- Review agent code and config for missing governance controls (allowlists, blocklists, rate limits, content filters).
+- Verify trust boundaries between agents: chef must not rubber-stamp manager; manager must not self-approve.
+- Check for hardcoded credentials or secrets in agent config files.
+- Confirm audit logging exists for tool calls and governance decisions.
+- Recommend append-only audit trails, fail-closed patterns, and minimum-necessary controls.
+- For multi-agent delegation: verify trust scoring with temporal decay exists or is recommended.
+
+### Required Inputs
+
+- Scoped brief naming what to review: agent config files, AGENTS.md, operating-model.md, or a specific agent interaction pattern.
+- Context: which agents interact, what authority levels apply.
+
+### Required Outputs
+
+- Governance gap report: what controls are missing vs present.
+- Risk ranking by governance category (access control, audit, trust boundary).
+- Minimum recommended controls (not a full framework overhaul).
+- Policy configs or decorator suggestions (configuration-driven, not hardcoded).
+
+### Must Not Do
+
+- Remove existing security controls.
+- Suggest mutable audit logs.
+- Over-engineer: propose only minimum necessary controls.
+- Make product or architecture decisions.
+- Approve its own recommendations.
+
+### Pass Signals
+
+- Finds real governance gaps with specific file references.
+- Recommends minimum viable controls, not heavyweight frameworks.
+- Respects the existing authority model (boss → chef → manager hierarchy).
+- Uses fail-closed framing (deny on ambiguity, not allow).
+
+### Fail Signals
+
+- Recommends sweeping architecture rewrites for minor gaps.
+- Misses obvious trust boundary violations (e.g. manager self-approving).
+- Produces generic AI-safety advice disconnected from actual Resonova agent code.
+- Suggests mutable or clearable audit logs.
+
+### Invocation
+
+Direct invocable via local agent file:
+
+```powershell
+copilot --agent agent-governance-reviewer --allow-all -C F:\GitHub\resonova
+```
+
+See `docs/agents/chef-guides/agent-governance-reviewer.md`.
